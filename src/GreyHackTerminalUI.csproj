@@ -1,0 +1,92 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <Description>BepInEx plugin for Grey Hack. Adds Canvas for associated Terminal.</Description>
+    <Version>0.1.0</Version>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <LangVersion>latest</LangVersion>
+    <Authors>ayecue</Authors>
+    <Company>ayecue</Company>
+    <AssemblyVersion>0.1.0</AssemblyVersion>
+    <FileVersion>0.1.0</FileVersion>
+    <ReleaseVersion>0.1.0</ReleaseVersion>
+    <Configurations>Release-BepInEx5;Debug-BepInEx5;Release-BepInEx6;Debug-BepInEx6</Configurations>
+    <RestoreAdditionalProjectSources>
+      https://api.nuget.org/v3/index.json;
+      https://nuget.bepinex.dev/v3/index.json;
+      https://nuget.samboy.dev/v3/index.json
+    </RestoreAdditionalProjectSources>
+    <RootNamespace>GreyHackTerminalUI</RootNamespace>
+    <NoWarn>CS1998</NoWarn>
+
+    <!-- Define Grey Hack path -->
+    <GreyHackPath Condition="'$(GREY_HACK_PATH)' != ''">$(GREY_HACK_PATH)</GreyHackPath>
+  </PropertyGroup>
+
+  <!-- BepInEx 5 Configuration -->
+  <PropertyGroup Condition="$(Configuration.Contains('BepInEx5'))">
+    <AssemblyName>GreyHackTerminalUI5</AssemblyName>
+    <OutputPath>bin\$(Configuration)\BepInEx5\</OutputPath>
+  </PropertyGroup>
+
+  <!-- BepInEx 6 Configuration -->
+  <PropertyGroup Condition="$(Configuration.Contains('BepInEx6'))">
+    <AssemblyName>GreyHackTerminalUI</AssemblyName>
+    <DefineConstants>$(DefineConstants);BEPINEX6</DefineConstants>
+    <OutputPath>bin\$(Configuration)\BepInEx6\</OutputPath>
+  </PropertyGroup>
+
+  <!-- Debug symbols for Release builds -->
+  <PropertyGroup Condition="$(Configuration.StartsWith('Release'))">
+    <DebugSymbols>true</DebugSymbols>
+  </PropertyGroup>
+
+  <!-- Common packages -->
+  <ItemGroup>
+    <PackageReference Include="BepInEx.Analyzers" Version="1.*" PrivateAssets="all" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="UnityEngine.Modules" Version="2022.3.55" IncludeAssets="compile" />
+  </ItemGroup>
+
+  <!-- Game assemblies -->
+  <ItemGroup>
+    <Reference Include="Assembly-CSharp">
+      <HintPath>$(GreyHackPath)/Grey Hack.app/Contents/Resources/Data/Managed/Assembly-CSharp.dll</HintPath>
+    </Reference>
+    <Reference Include="Unity.TextMeshPro">
+      <HintPath>$(GreyHackPath)/Grey Hack.app/Contents/Resources/Data/Managed/Unity.TextMeshPro.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+  <!-- BepInEx 5 specific packages -->
+  <ItemGroup Condition="$(Configuration.Contains('BepInEx5'))">
+    <PackageReference Include="BepInEx.Core" Version="5.*" />
+  </ItemGroup>
+
+  <!-- BepInEx 6 specific packages -->
+  <ItemGroup Condition="$(Configuration.Contains('BepInEx6'))">
+    <PackageReference Include="BepInEx.Unity.Mono" Version="6.0.0-be.*" IncludeAssets="compile" />
+    <PackageReference Include="MonoMod" Version="22.7.31.1" />
+  </ItemGroup>
+  
+  <ItemGroup Condition="'$(TargetFramework.TrimEnd(`0123456789`))' == 'net'">
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.2" PrivateAssets="all" />
+  </ItemGroup>
+  
+  <!-- Game assemblies -->
+  <ItemGroup>
+    <Reference Include="Assembly-CSharp">
+      <HintPath>$(GreyHackPath)/Grey Hack.app/Contents/Resources/Data/Managed/Assembly-CSharp.dll</HintPath>
+    </Reference>
+    <Reference Include="Unity.TextMeshPro">
+      <HintPath>$(GreyHackPath)/Grey Hack.app/Contents/Resources/Data/Managed/Unity.TextMeshPro.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.UI">
+      <HintPath>$(GreyHackPath)/Grey Hack.app/Contents/Resources/Data/Managed/UnityEngine.UI.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.UIModule">
+      <HintPath>$(GreyHackPath)/Grey Hack.app/Contents/Resources/Data/Managed/UnityEngine.UIModule.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+</Project>
