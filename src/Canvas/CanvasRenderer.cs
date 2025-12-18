@@ -222,6 +222,13 @@ namespace GreyHackTerminalUI.Canvas
             if (string.IsNullOrEmpty(text) || _font == null || _fontMaterial == null)
                 return;
 
+            // Limit font size to prevent memory abuse
+            fontSize = Mathf.Clamp(fontSize, 1, 256);
+            
+            // Limit text length to prevent excessive render texture size
+            if (text.Length > 500)
+                text = text.Substring(0, 500);
+
             // Request characters to be in the font texture
             _font.RequestCharactersInTexture(text, fontSize, FontStyle.Normal);
 
@@ -242,6 +249,11 @@ namespace GreyHackTerminalUI.Canvas
             // Ensure minimum size for small fonts
             int rtWidth = Mathf.Max(textWidth + fontSize * 2, 128);
             int rtHeight = Mathf.Max(fontSize * 3, 96);
+            
+            // Cap render texture size to prevent memory exhaustion
+            const int MAX_RT_SIZE = 4096;
+            if (rtWidth > MAX_RT_SIZE || rtHeight > MAX_RT_SIZE)
+                return;
 
             if (_textRenderTexture == null || _textRenderTexture.width < rtWidth || _textRenderTexture.height < rtHeight)
             {
