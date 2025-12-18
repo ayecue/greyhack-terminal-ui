@@ -124,6 +124,13 @@ namespace GreyHackTerminalUI.Canvas
         {
             int dx = Mathf.Abs(x2 - x1);
             int dy = Mathf.Abs(y2 - y1);
+            
+            // Limit line length to prevent excessive iterations
+            int maxDistance = Mathf.Max(_width, _height) * 3;
+            int lineLength = Mathf.Max(dx, dy);
+            if (lineLength > maxDistance)
+                return;
+            
             int sx = x1 < x2 ? 1 : -1;
             int sy = y1 < y2 ? 1 : -1;
             int err = dx - dy;
@@ -152,6 +159,11 @@ namespace GreyHackTerminalUI.Canvas
 
         public void DrawRect(int x, int y, int width, int height, Color color)
         {
+            // Limit dimensions to prevent excessive operations
+            width = Mathf.Clamp(width, 0, _width * 2);
+            height = Mathf.Clamp(height, 0, _height * 2);
+            if (width <= 0 || height <= 0) return;
+            
             // Top line
             DrawLine(x, y, x + width - 1, y, color);
             // Bottom line
@@ -164,6 +176,15 @@ namespace GreyHackTerminalUI.Canvas
 
         public void FillRect(int x, int y, int width, int height, Color color)
         {
+            // Limit dimensions to prevent excessive operations
+            width = Mathf.Clamp(width, 0, _width * 2);
+            height = Mathf.Clamp(height, 0, _height * 2);
+            if (width <= 0 || height <= 0) return;
+            
+            // Clamp fill area to reasonable bounds
+            int maxPixels = _width * _height;
+            if (width * height > maxPixels) return;
+            
             for (int py = y; py < y + height; py++)
             {
                 for (int px = x; px < x + width; px++)
@@ -175,6 +196,10 @@ namespace GreyHackTerminalUI.Canvas
 
         public void DrawCircle(int centerX, int centerY, int radius, Color color)
         {
+            // Limit radius to prevent excessive operations
+            radius = Mathf.Clamp(radius, 0, Mathf.Max(_width, _height));
+            if (radius <= 0) return;
+            
             int x = radius;
             int y = 0;
             int radiusError = 1 - x;
@@ -205,6 +230,14 @@ namespace GreyHackTerminalUI.Canvas
 
         public void FillCircle(int centerX, int centerY, int radius, Color color)
         {
+            // Limit radius to prevent excessive operations
+            radius = Mathf.Clamp(radius, 0, Mathf.Max(_width, _height));
+            if (radius <= 0) return;
+            
+            // Prevent excessive pixel iterations
+            int maxPixels = _width * _height;
+            if (radius * radius * 4 > maxPixels) return;
+            
             for (int y = -radius; y <= radius; y++)
             {
                 for (int x = -radius; x <= radius; x++)
