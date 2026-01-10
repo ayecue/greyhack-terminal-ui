@@ -288,26 +288,20 @@ namespace GreyHackTerminalUI.Canvas
             if (rtWidth > MAX_RT_SIZE || rtHeight > MAX_RT_SIZE)
                 return;
 
-            if (_textRenderTexture == null || _textRenderTexture.width < rtWidth || _textRenderTexture.height < rtHeight)
+            // Always recreate render textures to avoid stale state issues
+            if (_textRenderTexture != null)
             {
-                if (_textRenderTexture != null)
-                {
-                    _textRenderTexture.Release();
-                    Object.Destroy(_textRenderTexture);
-                }
-                
-                _textRenderTexture = new RenderTexture(rtWidth, rtHeight, 0, RenderTextureFormat.ARGB32);
-                _textRenderTexture.Create();
+                _textRenderTexture.Release();
+                Object.Destroy(_textRenderTexture);
             }
+            
+            _textRenderTexture = new RenderTexture(rtWidth, rtHeight, 0, RenderTextureFormat.ARGB32);
+            _textRenderTexture.Create();
 
-            // Ensure read texture matches
-            if (_textReadTexture == null || _textReadTexture.width != _textRenderTexture.width || _textReadTexture.height != _textRenderTexture.height)
-            {
-                if (_textReadTexture != null)
-                    Object.Destroy(_textReadTexture);
-                
-                _textReadTexture = new Texture2D(_textRenderTexture.width, _textRenderTexture.height, TextureFormat.ARGB32, false);
-            }
+            if (_textReadTexture != null)
+                Object.Destroy(_textReadTexture);
+            
+            _textReadTexture = new Texture2D(rtWidth, rtHeight, TextureFormat.ARGB32, false);
 
             // Save current state
             RenderTexture previousRT = RenderTexture.active;
@@ -320,10 +314,19 @@ namespace GreyHackTerminalUI.Canvas
             GL.PushMatrix();
             GL.LoadPixelMatrix(0, _textRenderTexture.width, _textRenderTexture.height, 0);
 
-            // Get font texture
+            // Get font texture - must get fresh reference after RequestCharactersInTexture
+            // as the atlas may have been rebuilt
             Texture fontTex = _font.material.mainTexture;
             
-            // Set up material
+            // Re-create material if needed to ensure fresh state
+            if (_fontMaterial == null || _fontMaterial.mainTexture != fontTex)
+            {
+                if (_fontMaterial != null)
+                    Object.Destroy(_fontMaterial);
+                _fontMaterial = new Material(_font.material);
+            }
+            
+            // Set up material with current font texture
             _fontMaterial.mainTexture = fontTex;
             _fontMaterial.SetPass(0);
 
