@@ -106,8 +106,8 @@ namespace GreyHackTerminalUI.VM
                         return new VMResult { Success = false, Error = "Execution limit exceeded (infinite loop?)" };
                     }
 
-                    // Check execution time every 1000 iterations
-                    if (iterations % 1000 == 0)
+                    // Check execution time every 4096 iterations (power of 2 for fast modulo)
+                    if ((iterations & 0xFFF) == 0)
                     {
                         var elapsed = (DateTime.UtcNow - startTime).TotalMilliseconds;
                         if (elapsed > MAX_EXECUTION_TIME_MS)

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text;
 using UnityEngine;
 using BepInEx;
 using BepInEx.Logging;
@@ -13,6 +14,13 @@ namespace GreyHackTerminalUI.Canvas
     {
         public int TerminalPID { get; set; }
         public CompiledChunk Chunk { get; set; }
+    }
+
+    // LRU cache entry for compiled scripts
+    internal class CachedScript
+    {
+        public CompiledChunk Chunk { get; set; }
+        public long LastUsed { get; set; }
     }
 
     public class CanvasManager : MonoBehaviour
@@ -35,6 +43,15 @@ namespace GreyHackTerminalUI.Canvas
         // Dictionary mapping terminal PID to queue of pending blocks (max 20 per terminal)
         private Dictionary<int, Queue<PendingUIBlock>> _pendingBlocks = new Dictionary<int, Queue<PendingUIBlock>>();
         private const int MAX_QUEUED_BLOCKS = 20;
+
+        // Script compilation cache - hash -> compiled chunk
+        private Dictionary<int, CachedScript> _scriptCache = new Dictionary<int, CachedScript>();
+        private const int MAX_CACHED_SCRIPTS = 100;
+        private long _cacheAccessCounter = 0;
+
+        // Reusable parser and compiler to reduce allocations
+        private Parser _sharedParser = new Parser();
+        private Compiler _sharedCompiler = new Compiler();
 
         // Lock for thread-safe access
         private readonly object _pendingLock = new object();
@@ -149,17 +166,13 @@ namespace GreyHackTerminalUI.Canvas
                     }
 
                     blockCount++;
-                    _logger?.LogDebug($"[CanvasManager] Tokenized block {blockCount}, token count: {tokens.Count}");
-
-                    // Parse the tokens
-                    Parser parser = new Parser();
-                    var ast = parser.Parse(tokens);
-                    _logger?.LogDebug($"[CanvasManager] Parsed block {blockCount}, statements: {ast.Statements.Count}");
-
-                    // Compile to bytecode
-                    Compiler compiler = new Compiler();
-                    CompiledChunk chunk = compiler.Compile(ast);
-                    _logger?.LogDebug($"[CanvasManager] Compiled block {blockCount}, code length: {chunk.Code.Count}");
+                    
+                    // Get the raw script content for cache key
+                    string scriptContent = lexer.GetBlockContent();
+                    
+                    // Use cached compilation if available
+                    CompiledChunk chunk = GetOrCompileScript(tokens, scriptContent);
+                    _logger?.LogDebug($"[CanvasManager] Block {blockCount}, code length: {chunk?.Code.Count ?? 0}");
 
                     if (chunk != null)
                     {
@@ -291,7 +304,8 @@ namespace GreyHackTerminalUI.Canvas
 
         private string StripUIBlocks(string output)
         {
-            var result = new System.Text.StringBuilder();
+            // Pre-allocate with expected capacity to reduce allocations
+            var result = new StringBuilder(output.Length);
             int i = 0;
 
             while (i < output.Length)
@@ -354,6 +368,67 @@ namespace GreyHackTerminalUI.Canvas
             }
 
             return result.ToString().Trim();
+        }
+
+        // Compute a hash for script content to use as cache key
+        private int ComputeScriptHash(string scriptContent)
+        {
+            // Simple but fast hash - good enough for cache key
+            int hash = 17;
+            foreach (char c in scriptContent)
+            {
+                hash = hash * 31 + c;
+            }
+            return hash;
+        }
+
+        // Get compiled script from cache or compile and cache it
+        private CompiledChunk GetOrCompileScript(List<Token> tokens, string scriptContent)
+        {
+            int hash = ComputeScriptHash(scriptContent);
+            
+            lock (_pendingLock)
+            {
+                if (_scriptCache.TryGetValue(hash, out CachedScript cached))
+                {
+                    cached.LastUsed = ++_cacheAccessCounter;
+                    return cached.Chunk;
+                }
+            }
+
+            // Cache miss - compile the script using shared instances
+            var ast = _sharedParser.Parse(tokens);
+            CompiledChunk chunk = _sharedCompiler.Compile(ast);
+
+            if (chunk != null)
+            {
+                lock (_pendingLock)
+                {
+                    // Evict oldest entry if cache is full
+                    if (_scriptCache.Count >= MAX_CACHED_SCRIPTS)
+                    {
+                        int oldestKey = 0;
+                        long oldestTime = long.MaxValue;
+                        foreach (var kvp in _scriptCache)
+                        {
+                            if (kvp.Value.LastUsed < oldestTime)
+                            {
+                                oldestTime = kvp.Value.LastUsed;
+                                oldestKey = kvp.Key;
+                            }
+                        }
+                        _scriptCache.Remove(oldestKey);
+                    }
+
+                    _scriptCache[hash] = new CachedScript
+                    {
+                        Chunk = chunk,
+                        LastUsed = ++_cacheAccessCounter
+                    };
+                }
+            }
+
+            return chunk;
         }
 
         private VirtualMachine GetOrCreateVM(int terminalPID)

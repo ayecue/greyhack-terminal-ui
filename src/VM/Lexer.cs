@@ -64,7 +64,8 @@ namespace GreyHackTerminalUI.VM
             _position = start + BLOCK_START.Length;
             UpdateLineColumn(start, _position);
 
-            var tokens = new List<Token>() { new Token(TokenType.UIBlockStart, BLOCK_START, _line, _column) };
+            // Pre-allocate with reasonable capacity to reduce allocations
+            var tokens = new List<Token>(64) { new Token(TokenType.UIBlockStart, BLOCK_START, _line, _column) };
 
             int braceDepth = 1;
 
@@ -107,6 +108,15 @@ namespace GreyHackTerminalUI.VM
         public (int start, int end) GetConsumedRange()
         {
             return (_blockStart, _position);
+        }
+
+        public string GetBlockContent()
+        {
+            if (_blockStart >= 0 && _position > _blockStart)
+            {
+                return _input.Substring(_blockStart, _position - _blockStart);
+            }
+            return "";
         }
 
         private int FindUIBlockStart()

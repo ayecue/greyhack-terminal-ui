@@ -384,11 +384,12 @@ namespace GreyHackTerminalUI.Canvas
             // Restore render target
             RenderTexture.active = previousRT;
 
-            // Copy render texture to canvas
+            // Copy render texture to canvas using Color32 (faster than Color)
             // Offset destination by padding so text appears at requested (x,y)
-            Color[] textPixels = _textReadTexture.GetPixels(0, 0, rtWidth, rtHeight);
+            Color32[] textPixels = _textReadTexture.GetPixels32();
             int offsetX = -(fontSize / 2);  // Adjust for left padding
             int offsetY = -fontSize;       // Adjust for top padding
+            int pixelCount = textPixels.Length;
 
             for (int py = 0; py < rtHeight; py++)
             {
@@ -396,16 +397,17 @@ namespace GreyHackTerminalUI.Canvas
                 {
                     // Flip Y (RenderTexture has 0,0 at bottom-left)
                     int srcIndex = (rtHeight - 1 - py) * rtWidth + px;
-                    if (srcIndex < 0 || srcIndex >= textPixels.Length)
+                    if (srcIndex < 0 || srcIndex >= pixelCount)
                         continue;
 
-                    Color srcColor = textPixels[srcIndex];
+                    Color32 srcColor = textPixels[srcIndex];
                     
-                    // Use the source alpha as the glyph mask
-                    float alpha = srcColor.a;
-                    if (alpha > 0.01f)
+                    // Use the source alpha as the glyph mask (Color32 alpha is 0-255)
+                    byte alpha = srcColor.a;
+                    if (alpha > 2)  // Skip nearly transparent pixels
                     {
-                        Color finalColor = new Color(color.r, color.g, color.b, color.a * alpha);
+                        float alphaNorm = alpha / 255f;
+                        Color finalColor = new Color(color.r, color.g, color.b, color.a * alphaNorm);
                         SetPixelBlend(x + px + offsetX, y + py + offsetY, finalColor);
                     }
                 }
