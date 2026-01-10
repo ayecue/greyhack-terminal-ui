@@ -14,8 +14,7 @@
     <Configurations>Release-BepInEx5;Debug-BepInEx5;Release-BepInEx6;Debug-BepInEx6</Configurations>
     <RestoreAdditionalProjectSources>
       https://api.nuget.org/v3/index.json;
-      https://nuget.bepinex.dev/v3/index.json;
-      https://nuget.samboy.dev/v3/index.json
+      https://nuget.bepinex.dev/v3/index.json
     </RestoreAdditionalProjectSources>
     <RootNamespace>GreyHackTerminalUI</RootNamespace>
     <NoWarn>CS1998</NoWarn>

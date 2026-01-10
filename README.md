@@ -21,7 +21,6 @@ The canvas is rendered in a separate Unity window and driven by a lightweight sc
   - Limits on variables, string length, loop iterations, execution time
   - Cooldown on resizing the canvas
   - Queue of at most 5 pending UI blocks per terminal
-- BepInEx logging that is quiet in production (mostly debug‑level)
 
 ---
 
@@ -343,15 +342,6 @@ Additionally:
 - Each `print("#UI{ ... }")` is executed in its own VM run; previous run can be stopped cleanly.
 
 If a script exceeds a limit, execution is aborted and an error is logged to BepInEx.
-
----
-
-## Logging Behavior
-
-- Startup, errors, and important warnings are logged at info/warn/error.
-- Most noisy messages (tokenization, parsing, compilation, queueing, VM success, window lifecycle) are logged at debug level.
-- In a typical production run with default BepInEx settings, the mod should be relatively quiet unless something goes wrong.
-- To debug scripts, enable debug logging in your BepInEx configuration.
 
 ---
 
