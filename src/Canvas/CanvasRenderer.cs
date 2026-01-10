@@ -12,12 +12,6 @@ namespace GreyHackTerminalUI.Canvas
         private bool _isDirty;
         private Color _clearColor = Color.black;
 
-        // Font rendering using GL
-        private Font _font;
-        private Material _fontMaterial;
-        private RenderTexture _textRenderTexture;
-        private Texture2D _textReadTexture;
-
         public int Width => _width;
         public int Height => _height;
         public Texture2D Texture => _texture;
@@ -25,42 +19,7 @@ namespace GreyHackTerminalUI.Canvas
 
         public CanvasRenderer(int width = 320, int height = 240)
         {
-            InitializeFont();
             Resize(width, height);
-        }
-
-        private void InitializeFont()
-        {
-            // Try to get Arial or any available system font
-            string[] preferredFonts = { "Arial", "Liberation Sans", "DejaVu Sans", "Helvetica", "Verdana" };
-            
-            foreach (string fontName in preferredFonts)
-            {
-                _font = Font.CreateDynamicFontFromOSFont(fontName, 64);
-                if (_font != null)
-                    break;
-            }
-            
-            if (_font == null)
-            {
-                string[] availableFonts = Font.GetOSInstalledFontNames();
-                if (availableFonts.Length > 0)
-                {
-                    _font = Font.CreateDynamicFontFromOSFont(availableFonts[0], 64);
-                }
-            }
-
-            if (_font == null)
-            {
-                _font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            }
-
-            // Create material for font rendering
-            if (_font != null && _font.material != null)
-            {
-                _fontMaterial = new Material(_font.material);
-                _fontMaterial.SetPass(0);
-            }
         }
 
         public void Resize(int width, int height)
@@ -250,169 +209,173 @@ namespace GreyHackTerminalUI.Canvas
             }
         }
 
+        // 5x7 bitmap font - each character is 5 pixels wide, 7 pixels tall
+        // Each byte represents a row, with bits representing pixels (LSB = left)
+        private static readonly Dictionary<char, byte[]> BitmapFont = new Dictionary<char, byte[]>
+        {
+            // Letters
+            {'A', new byte[] {0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11}},
+            {'B', new byte[] {0x0F, 0x11, 0x11, 0x0F, 0x11, 0x11, 0x0F}},
+            {'C', new byte[] {0x0E, 0x11, 0x01, 0x01, 0x01, 0x11, 0x0E}},
+            {'D', new byte[] {0x07, 0x09, 0x11, 0x11, 0x11, 0x09, 0x07}},
+            {'E', new byte[] {0x1F, 0x01, 0x01, 0x0F, 0x01, 0x01, 0x1F}},
+            {'F', new byte[] {0x1F, 0x01, 0x01, 0x0F, 0x01, 0x01, 0x01}},
+            {'G', new byte[] {0x0E, 0x11, 0x01, 0x1D, 0x11, 0x11, 0x0E}},
+            {'H', new byte[] {0x11, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11}},
+            {'I', new byte[] {0x0E, 0x04, 0x04, 0x04, 0x04, 0x04, 0x0E}},
+            {'J', new byte[] {0x1C, 0x08, 0x08, 0x08, 0x08, 0x09, 0x06}},
+            {'K', new byte[] {0x11, 0x09, 0x05, 0x03, 0x05, 0x09, 0x11}},
+            {'L', new byte[] {0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x1F}},
+            {'M', new byte[] {0x11, 0x1B, 0x15, 0x15, 0x11, 0x11, 0x11}},
+            {'N', new byte[] {0x11, 0x13, 0x15, 0x19, 0x11, 0x11, 0x11}},
+            {'O', new byte[] {0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E}},
+            {'P', new byte[] {0x0F, 0x11, 0x11, 0x0F, 0x01, 0x01, 0x01}},
+            {'Q', new byte[] {0x0E, 0x11, 0x11, 0x11, 0x15, 0x09, 0x16}},
+            {'R', new byte[] {0x0F, 0x11, 0x11, 0x0F, 0x05, 0x09, 0x11}},
+            {'S', new byte[] {0x0E, 0x11, 0x01, 0x0E, 0x10, 0x11, 0x0E}},
+            {'T', new byte[] {0x1F, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04}},
+            {'U', new byte[] {0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E}},
+            {'V', new byte[] {0x11, 0x11, 0x11, 0x11, 0x11, 0x0A, 0x04}},
+            {'W', new byte[] {0x11, 0x11, 0x11, 0x15, 0x15, 0x15, 0x0A}},
+            {'X', new byte[] {0x11, 0x11, 0x0A, 0x04, 0x0A, 0x11, 0x11}},
+            {'Y', new byte[] {0x11, 0x11, 0x0A, 0x04, 0x04, 0x04, 0x04}},
+            {'Z', new byte[] {0x1F, 0x10, 0x08, 0x04, 0x02, 0x01, 0x1F}},
+            
+            // Numbers
+            {'0', new byte[] {0x0E, 0x11, 0x19, 0x15, 0x13, 0x11, 0x0E}},
+            {'1', new byte[] {0x04, 0x06, 0x04, 0x04, 0x04, 0x04, 0x0E}},
+            {'2', new byte[] {0x0E, 0x11, 0x10, 0x08, 0x04, 0x02, 0x1F}},
+            {'3', new byte[] {0x0E, 0x11, 0x10, 0x0C, 0x10, 0x11, 0x0E}},
+            {'4', new byte[] {0x08, 0x0C, 0x0A, 0x09, 0x1F, 0x08, 0x08}},
+            {'5', new byte[] {0x1F, 0x01, 0x0F, 0x10, 0x10, 0x11, 0x0E}},
+            {'6', new byte[] {0x0C, 0x02, 0x01, 0x0F, 0x11, 0x11, 0x0E}},
+            {'7', new byte[] {0x1F, 0x10, 0x08, 0x04, 0x02, 0x02, 0x02}},
+            {'8', new byte[] {0x0E, 0x11, 0x11, 0x0E, 0x11, 0x11, 0x0E}},
+            {'9', new byte[] {0x0E, 0x11, 0x11, 0x1E, 0x10, 0x08, 0x06}},
+            
+            // Punctuation and symbols
+            {' ', new byte[] {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+            {'!', new byte[] {0x04, 0x04, 0x04, 0x04, 0x04, 0x00, 0x04}},
+            {'"', new byte[] {0x0A, 0x0A, 0x0A, 0x00, 0x00, 0x00, 0x00}},
+            {'#', new byte[] {0x0A, 0x0A, 0x1F, 0x0A, 0x1F, 0x0A, 0x0A}},
+            {'$', new byte[] {0x04, 0x0F, 0x05, 0x0E, 0x14, 0x0F, 0x04}},
+            {'%', new byte[] {0x03, 0x13, 0x08, 0x04, 0x02, 0x19, 0x18}},
+            {'&', new byte[] {0x06, 0x09, 0x05, 0x02, 0x15, 0x09, 0x16}},
+            {'\'', new byte[] {0x04, 0x04, 0x02, 0x00, 0x00, 0x00, 0x00}},
+            {'(', new byte[] {0x08, 0x04, 0x02, 0x02, 0x02, 0x04, 0x08}},
+            {')', new byte[] {0x02, 0x04, 0x08, 0x08, 0x08, 0x04, 0x02}},
+            {'*', new byte[] {0x00, 0x04, 0x15, 0x0E, 0x15, 0x04, 0x00}},
+            {'+', new byte[] {0x00, 0x04, 0x04, 0x1F, 0x04, 0x04, 0x00}},
+            {',', new byte[] {0x00, 0x00, 0x00, 0x00, 0x04, 0x04, 0x02}},
+            {'-', new byte[] {0x00, 0x00, 0x00, 0x1F, 0x00, 0x00, 0x00}},
+            {'.', new byte[] {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04}},
+            {'/', new byte[] {0x10, 0x10, 0x08, 0x04, 0x02, 0x01, 0x01}},
+            {':', new byte[] {0x00, 0x04, 0x04, 0x00, 0x04, 0x04, 0x00}},
+            {';', new byte[] {0x00, 0x04, 0x04, 0x00, 0x04, 0x04, 0x02}},
+            {'<', new byte[] {0x08, 0x04, 0x02, 0x01, 0x02, 0x04, 0x08}},
+            {'=', new byte[] {0x00, 0x00, 0x1F, 0x00, 0x1F, 0x00, 0x00}},
+            {'>', new byte[] {0x02, 0x04, 0x08, 0x10, 0x08, 0x04, 0x02}},
+            {'?', new byte[] {0x0E, 0x11, 0x10, 0x08, 0x04, 0x00, 0x04}},
+            {'@', new byte[] {0x0E, 0x11, 0x1D, 0x1D, 0x1D, 0x01, 0x0E}},
+            {'[', new byte[] {0x0E, 0x02, 0x02, 0x02, 0x02, 0x02, 0x0E}},
+            {'\\', new byte[] {0x01, 0x01, 0x02, 0x04, 0x08, 0x10, 0x10}},
+            {']', new byte[] {0x0E, 0x08, 0x08, 0x08, 0x08, 0x08, 0x0E}},
+            {'^', new byte[] {0x04, 0x0A, 0x11, 0x00, 0x00, 0x00, 0x00}},
+            {'_', new byte[] {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1F}},
+            {'`', new byte[] {0x02, 0x04, 0x08, 0x00, 0x00, 0x00, 0x00}},
+            {'{', new byte[] {0x0C, 0x04, 0x04, 0x02, 0x04, 0x04, 0x0C}},
+            {'|', new byte[] {0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04}},
+            {'}', new byte[] {0x06, 0x04, 0x04, 0x08, 0x04, 0x04, 0x06}},
+            {'~', new byte[] {0x00, 0x00, 0x02, 0x15, 0x08, 0x00, 0x00}},
+            
+            // Lowercase letters (same as uppercase for simplicity, or simplified versions)
+            {'a', new byte[] {0x00, 0x00, 0x0E, 0x10, 0x1E, 0x11, 0x1E}},
+            {'b', new byte[] {0x01, 0x01, 0x0D, 0x13, 0x11, 0x11, 0x0F}},
+            {'c', new byte[] {0x00, 0x00, 0x0E, 0x01, 0x01, 0x11, 0x0E}},
+            {'d', new byte[] {0x10, 0x10, 0x16, 0x19, 0x11, 0x11, 0x1E}},
+            {'e', new byte[] {0x00, 0x00, 0x0E, 0x11, 0x1F, 0x01, 0x0E}},
+            {'f', new byte[] {0x0C, 0x12, 0x02, 0x07, 0x02, 0x02, 0x02}},
+            {'g', new byte[] {0x00, 0x1E, 0x11, 0x11, 0x1E, 0x10, 0x0E}},
+            {'h', new byte[] {0x01, 0x01, 0x0D, 0x13, 0x11, 0x11, 0x11}},
+            {'i', new byte[] {0x04, 0x00, 0x06, 0x04, 0x04, 0x04, 0x0E}},
+            {'j', new byte[] {0x08, 0x00, 0x0C, 0x08, 0x08, 0x09, 0x06}},
+            {'k', new byte[] {0x01, 0x01, 0x09, 0x05, 0x03, 0x05, 0x09}},
+            {'l', new byte[] {0x06, 0x04, 0x04, 0x04, 0x04, 0x04, 0x0E}},
+            {'m', new byte[] {0x00, 0x00, 0x0B, 0x15, 0x15, 0x11, 0x11}},
+            {'n', new byte[] {0x00, 0x00, 0x0D, 0x13, 0x11, 0x11, 0x11}},
+            {'o', new byte[] {0x00, 0x00, 0x0E, 0x11, 0x11, 0x11, 0x0E}},
+            {'p', new byte[] {0x00, 0x0F, 0x11, 0x11, 0x0F, 0x01, 0x01}},
+            {'q', new byte[] {0x00, 0x1E, 0x11, 0x11, 0x1E, 0x10, 0x10}},
+            {'r', new byte[] {0x00, 0x00, 0x0D, 0x13, 0x01, 0x01, 0x01}},
+            {'s', new byte[] {0x00, 0x00, 0x0E, 0x01, 0x0E, 0x10, 0x0F}},
+            {'t', new byte[] {0x02, 0x02, 0x07, 0x02, 0x02, 0x12, 0x0C}},
+            {'u', new byte[] {0x00, 0x00, 0x11, 0x11, 0x11, 0x19, 0x16}},
+            {'v', new byte[] {0x00, 0x00, 0x11, 0x11, 0x11, 0x0A, 0x04}},
+            {'w', new byte[] {0x00, 0x00, 0x11, 0x11, 0x15, 0x15, 0x0A}},
+            {'x', new byte[] {0x00, 0x00, 0x11, 0x0A, 0x04, 0x0A, 0x11}},
+            {'y', new byte[] {0x00, 0x11, 0x11, 0x11, 0x1E, 0x10, 0x0E}},
+            {'z', new byte[] {0x00, 0x00, 0x1F, 0x08, 0x04, 0x02, 0x1F}},
+        };
+        
+        private const int GLYPH_WIDTH = 5;
+        private const int GLYPH_HEIGHT = 7;
+
         public void DrawText(int x, int y, string text, Color color, int fontSize = 12)
         {
-            if (string.IsNullOrEmpty(text) || _font == null || _fontMaterial == null)
+            if (string.IsNullOrEmpty(text))
                 return;
 
-            // Limit font size to prevent memory abuse
-            fontSize = Mathf.Clamp(fontSize, 1, 256);
-            
-            // Limit text length to prevent excessive render texture size
+            // Limit text length
             if (text.Length > 500)
                 text = text.Substring(0, 500);
 
-            // Request characters to be in the font texture
-            _font.RequestCharactersInTexture(text, fontSize, FontStyle.Normal);
-
-            // Calculate text dimensions with generous padding
-            int textWidth = 0;
+            // Calculate scale factor based on font size (base size is 7 pixels tall)
+            int scale = Mathf.Max(1, fontSize / GLYPH_HEIGHT);
+            int charSpacing = 1 * scale;  // 1 pixel spacing between chars, scaled
+            
+            int cursorX = x;
+            
             foreach (char c in text)
             {
-                if (_font.GetCharacterInfo(c, out CharacterInfo info, fontSize, FontStyle.Normal))
+                char upperC = char.ToUpper(c);
+                byte[] glyph;
+                
+                // Try to get the glyph, fall back to uppercase, then to '?'
+                if (!BitmapFont.TryGetValue(c, out glyph))
                 {
-                    textWidth += Mathf.CeilToInt(info.advance);
-                }
-            }
-
-            if (textWidth <= 0)
-                return;
-
-            // Use generous bounds to ensure text isn't clipped
-            // Ensure minimum size for small fonts
-            int rtWidth = Mathf.Max(textWidth + fontSize * 2, 128);
-            int rtHeight = Mathf.Max(fontSize * 3, 96);
-            
-            // Cap render texture size to prevent memory exhaustion
-            const int MAX_RT_SIZE = 4096;
-            if (rtWidth > MAX_RT_SIZE || rtHeight > MAX_RT_SIZE)
-                return;
-
-            // Always recreate render textures to avoid stale state issues
-            if (_textRenderTexture != null)
-            {
-                _textRenderTexture.Release();
-                Object.Destroy(_textRenderTexture);
-            }
-            
-            _textRenderTexture = new RenderTexture(rtWidth, rtHeight, 0, RenderTextureFormat.ARGB32);
-            _textRenderTexture.Create();
-
-            if (_textReadTexture != null)
-                Object.Destroy(_textReadTexture);
-            
-            _textReadTexture = new Texture2D(rtWidth, rtHeight, TextureFormat.ARGB32, false);
-
-            // Save current state
-            RenderTexture previousRT = RenderTexture.active;
-            
-            // Render to our texture
-            RenderTexture.active = _textRenderTexture;
-            GL.Clear(true, true, new Color(0, 0, 0, 0));
-
-            // Set up orthographic projection for pixel-perfect rendering
-            GL.PushMatrix();
-            GL.LoadPixelMatrix(0, _textRenderTexture.width, _textRenderTexture.height, 0);
-
-            // Get font texture - must get fresh reference after RequestCharactersInTexture
-            // as the atlas may have been rebuilt
-            Texture fontTex = _font.material.mainTexture;
-            
-            // Re-create material if needed to ensure fresh state
-            if (_fontMaterial == null || _fontMaterial.mainTexture != fontTex)
-            {
-                if (_fontMaterial != null)
-                    Object.Destroy(_fontMaterial);
-                _fontMaterial = new Material(_font.material);
-            }
-            
-            // Set up material with current font texture
-            _fontMaterial.mainTexture = fontTex;
-            _fontMaterial.SetPass(0);
-
-            // Render each character as a textured quad
-            GL.Begin(GL.QUADS);
-            GL.Color(Color.white);
-
-            float cursorX = fontSize;
-            float baselineY = fontSize * 2;
-
-            foreach (char c in text)
-            {
-                if (_font.GetCharacterInfo(c, out CharacterInfo ch, fontSize, FontStyle.Normal))
-                {
-                    // Character quad vertices (in screen space, Y down)
-                    // Position relative to baseline
-                    float left = cursorX + ch.minX;
-                    float right = cursorX + ch.maxX;
-                    float top = baselineY - ch.maxY;
-                    float bottom = baselineY - ch.minY;
-
-                    // UV coordinates
-                    Vector2 uvBL = ch.uvBottomLeft;
-                    Vector2 uvBR = ch.uvBottomRight;
-                    Vector2 uvTL = ch.uvTopLeft;
-                    Vector2 uvTR = ch.uvTopRight;
-
-                    // Bottom-left
-                    GL.TexCoord2(uvBL.x, uvBL.y);
-                    GL.Vertex3(left, bottom, 0);
-
-                    // Bottom-right
-                    GL.TexCoord2(uvBR.x, uvBR.y);
-                    GL.Vertex3(right, bottom, 0);
-
-                    // Top-right
-                    GL.TexCoord2(uvTR.x, uvTR.y);
-                    GL.Vertex3(right, top, 0);
-
-                    // Top-left
-                    GL.TexCoord2(uvTL.x, uvTL.y);
-                    GL.Vertex3(left, top, 0);
-
-                    cursorX += ch.advance;
-                }
-            }
-
-            GL.End();
-            GL.PopMatrix();
-
-            // Read pixels back
-            _textReadTexture.ReadPixels(new Rect(0, 0, rtWidth, rtHeight), 0, 0, false);
-            _textReadTexture.Apply();
-
-            // Restore render target
-            RenderTexture.active = previousRT;
-
-            // Copy render texture to canvas using Color32 (faster than Color)
-            // Offset destination by padding so text appears at requested (x,y)
-            Color32[] textPixels = _textReadTexture.GetPixels32();
-            int offsetX = -(fontSize / 2);  // Adjust for left padding
-            int offsetY = -fontSize;       // Adjust for top padding
-            int pixelCount = textPixels.Length;
-
-            for (int py = 0; py < rtHeight; py++)
-            {
-                for (int px = 0; px < rtWidth; px++)
-                {
-                    // Flip Y (RenderTexture has 0,0 at bottom-left)
-                    int srcIndex = (rtHeight - 1 - py) * rtWidth + px;
-                    if (srcIndex < 0 || srcIndex >= pixelCount)
-                        continue;
-
-                    Color32 srcColor = textPixels[srcIndex];
-                    
-                    // Use the source alpha as the glyph mask (Color32 alpha is 0-255)
-                    byte alpha = srcColor.a;
-                    if (alpha > 2)  // Skip nearly transparent pixels
+                    if (!BitmapFont.TryGetValue(upperC, out glyph))
                     {
-                        float alphaNorm = alpha / 255f;
-                        Color finalColor = new Color(color.r, color.g, color.b, color.a * alphaNorm);
-                        SetPixelBlend(x + px + offsetX, y + py + offsetY, finalColor);
+                        glyph = BitmapFont.ContainsKey('?') ? BitmapFont['?'] : null;
                     }
                 }
+                
+                if (glyph != null)
+                {
+                    // Draw the character
+                    for (int row = 0; row < GLYPH_HEIGHT; row++)
+                    {
+                        byte rowData = glyph[row];
+                        for (int col = 0; col < GLYPH_WIDTH; col++)
+                        {
+                            if ((rowData & (1 << col)) != 0)
+                            {
+                                // Draw a scaled pixel
+                                for (int sy = 0; sy < scale; sy++)
+                                {
+                                    for (int sx = 0; sx < scale; sx++)
+                                    {
+                                        SetPixel(cursorX + col * scale + sx, y + row * scale + sy, color);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Advance cursor by character width plus spacing
+                cursorX += GLYPH_WIDTH * scale + charSpacing;
             }
-
+            
             _isDirty = true;
         }
 
@@ -458,22 +421,6 @@ namespace GreyHackTerminalUI.Canvas
             {
                 Object.Destroy(_texture);
                 _texture = null;
-            }
-            if (_fontMaterial != null)
-            {
-                Object.Destroy(_fontMaterial);
-                _fontMaterial = null;
-            }
-            if (_textRenderTexture != null)
-            {
-                _textRenderTexture.Release();
-                Object.Destroy(_textRenderTexture);
-                _textRenderTexture = null;
-            }
-            if (_textReadTexture != null)
-            {
-                Object.Destroy(_textReadTexture);
-                _textReadTexture = null;
             }
             _pixels = null;
         }
