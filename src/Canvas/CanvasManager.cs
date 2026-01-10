@@ -32,9 +32,9 @@ namespace GreyHackTerminalUI.Canvas
         // Dictionary mapping terminal PID to VM busy state
         private Dictionary<int, bool> _vmBusy = new Dictionary<int, bool>();
 
-        // Dictionary mapping terminal PID to queue of pending blocks (max 5 per terminal)
+        // Dictionary mapping terminal PID to queue of pending blocks (max 20 per terminal)
         private Dictionary<int, Queue<PendingUIBlock>> _pendingBlocks = new Dictionary<int, Queue<PendingUIBlock>>();
-        private const int MAX_QUEUED_BLOCKS = 5;
+        private const int MAX_QUEUED_BLOCKS = 20;
 
         // Lock for thread-safe access
         private readonly object _pendingLock = new object();

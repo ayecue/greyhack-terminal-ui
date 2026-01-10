@@ -5,8 +5,8 @@ namespace GreyHackTerminalUI.VM
 {
     public class VMContext
     {
-        private const int MAX_VARIABLES = 100;
-        private const int MAX_STRING_LENGTH = 102400; // 100KB
+        private const int MAX_VARIABLES = 500;
+        private const int MAX_STRING_LENGTH = 204800; // 200KB
 
         public Dictionary<string, object> Variables { get; } = new Dictionary<string, object>();
         public Dictionary<string, object> Globals { get; } = new Dictionary<string, object>();
@@ -64,8 +64,8 @@ namespace GreyHackTerminalUI.VM
     public class VirtualMachine
     {
         private const int MAX_STACK_SIZE = 1024;
-        private const int MAX_ITERATIONS = 40000;
-        private const int MAX_EXECUTION_TIME_MS = 500;
+        private const int MAX_ITERATIONS = 100000;
+        private const int MAX_EXECUTION_TIME_MS = 1000;
 
         private CompiledChunk _chunk;
         private VMContext _context;
