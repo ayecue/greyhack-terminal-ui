@@ -6,22 +6,30 @@ namespace GreyHackTerminalUI.Canvas
     public class CanvasRenderer
     {
         private Texture2D _texture;
-        private Color[] _pixels;
+        private Color[] _backBuffer;   // Draw to this
+        private Color[] _frontBuffer;  // Display this
         private int _width;
         private int _height;
         private bool _isDirty;
         private Color _clearColor = Color.black;
+        private bool _needsApply = false;
+        private readonly object _bufferLock = new object();
+        
+        // Debug counters
+        private int _renderCount = 0;
+        private int _clearCount = 0;
+        private float _lastLogTime = 0f;
 
         public int Width => _width;
         public int Height => _height;
         public Texture2D Texture => _texture;
         public bool IsDirty => _isDirty;
+        public bool NeedsApply => _needsApply;
 
         public CanvasRenderer(int width = 320, int height = 240)
         {
             Resize(width, height);
         }
-
         public void Resize(int width, int height)
         {
             // Clamp to actual screen resolution instead of hardcoded values
@@ -40,16 +48,31 @@ namespace GreyHackTerminalUI.Canvas
             _texture.filterMode = FilterMode.Point;
             _texture.wrapMode = TextureWrapMode.Clamp;
 
-            _pixels = new Color[_width * _height];
+            _backBuffer = new Color[_width * _height];
+            _frontBuffer = new Color[_width * _height];
             Clear(_clearColor);
+            
+            // Initialize front buffer too
+            for (int i = 0; i < _frontBuffer.Length; i++)
+            {
+                _frontBuffer[i] = _clearColor;
+            }
         }
 
         public void Clear(Color color)
         {
             _clearColor = color;
-            for (int i = 0; i < _pixels.Length; i++)
+            _clearCount++;
+            
+            // Debug: Log if we're clearing to white (shouldn't happen normally)
+            if (color.r > 0.9f && color.g > 0.9f && color.b > 0.9f)
             {
-                _pixels[i] = color;
+                UnityEngine.Debug.LogWarning($"[CanvasRenderer] Clear called with near-white color: R={color.r}, G={color.g}, B={color.b}");
+            }
+            
+            for (int i = 0; i < _backBuffer.Length; i++)
+            {
+                _backBuffer[i] = color;
             }
             _isDirty = true;
         }
@@ -66,7 +89,7 @@ namespace GreyHackTerminalUI.Canvas
 
             // Flip Y coordinate (0,0 at top-left)
             int flippedY = _height - 1 - y;
-            _pixels[flippedY * _width + x] = color;
+            _backBuffer[flippedY * _width + x] = color;
             _isDirty = true;
         }
 
@@ -76,7 +99,7 @@ namespace GreyHackTerminalUI.Canvas
                 return Color.clear;
 
             int flippedY = _height - 1 - y;
-            return _pixels[flippedY * _width + x];
+            return _backBuffer[flippedY * _width + x];
         }
 
         public void DrawLine(int x1, int y1, int x2, int y2, Color color)
@@ -389,14 +412,14 @@ namespace GreyHackTerminalUI.Canvas
             
             if (color.a >= 1f)
             {
-                _pixels[index] = color;
+                _backBuffer[index] = color;
             }
             else if (color.a > 0f)
             {
                 // Alpha blend
-                Color existing = _pixels[index];
+                Color existing = _backBuffer[index];
                 float invAlpha = 1f - color.a;
-                _pixels[index] = new Color(
+                _backBuffer[index] = new Color(
                     color.r * color.a + existing.r * invAlpha,
                     color.g * color.a + existing.g * invAlpha,
                     color.b * color.a + existing.b * invAlpha,
@@ -405,14 +428,46 @@ namespace GreyHackTerminalUI.Canvas
             }
         }
 
+        /// <summary>
+        /// Apply pixels to texture immediately - no throttling for now
+        /// </summary>
         public void Render()
         {
-            if (_texture != null && _isDirty)
+            if (!_isDirty || _backBuffer == null || _texture == null)
+                return;
+
+            _renderCount++;
+            
+            // Log frame statistics every second
+            float now = UnityEngine.Time.time;
+            if (now - _lastLogTime >= 1.0f)
             {
-                _texture.SetPixels(_pixels);
-                _texture.Apply();
-                _isDirty = false;
+                UnityEngine.Debug.Log($"[CanvasRenderer] Stats: {_renderCount} renders, {_clearCount} clears in last second");
+                _renderCount = 0;
+                _clearCount = 0;
+                _lastLogTime = now;
             }
+
+            // Swap buffers - copy back buffer to front buffer atomically
+            lock (_bufferLock)
+            {
+                System.Array.Copy(_backBuffer, _frontBuffer, _backBuffer.Length);
+            }
+            
+            // Apply front buffer to texture
+            _texture.SetPixels(_frontBuffer);
+            _texture.Apply();
+            _isDirty = false;
+            _needsApply = false;
+        }
+
+        /// <summary>
+        /// Called from CanvasWindow.Update() - no longer needed but kept for compatibility
+        /// </summary>
+        public void ApplyTexture()
+        {
+            // Just call Render
+            Render();
         }
 
         public void Destroy()
@@ -422,7 +477,8 @@ namespace GreyHackTerminalUI.Canvas
                 Object.Destroy(_texture);
                 _texture = null;
             }
-            _pixels = null;
+            _backBuffer = null;
+            _frontBuffer = null;
         }
     }
 }

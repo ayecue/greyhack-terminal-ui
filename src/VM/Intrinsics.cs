@@ -145,7 +145,12 @@ namespace GreyHackTerminalUI.VM
             canvas.Methods["show"] = (target, args, ctx) =>
             {
                 var window = GetCanvasWindow(ctx);
-                window?.Show();
+                if (window != null)
+                {
+                    window.Show();
+                    // Mark this terminal as having a visible window
+                    CanvasManager.Instance?.MarkWindowVisible(window.TerminalPID);
+                }
                 return null;
             };
 
@@ -196,7 +201,8 @@ namespace GreyHackTerminalUI.VM
 
                 if (args.Length > 0)
                 {
-                    Color color = ParseColor(args[0]?.ToString());
+                    string colorStr = args[0]?.ToString() ?? "";
+                    Color color = ParseColor(colorStr);
                     window.Renderer.Clear(color);
                 }
                 else
@@ -305,11 +311,13 @@ namespace GreyHackTerminalUI.VM
                 var window = GetCanvasWindow(ctx);
                 if (window == null) return null;
 
-                Color color = ParseColor(args[0]?.ToString());
+                string colorStr = args[0]?.ToString() ?? "";
+                Color color = ParseColor(colorStr);
                 int x = ToInt(args[1]);
                 int y = ToInt(args[2]);
                 string text = args[3]?.ToString() ?? "";
                 int size = args.Length > 4 ? ToInt(args[4]) : 12;
+                
                 window.Renderer.DrawText(x, y, text, color, size);
                 return null;
             };
@@ -318,7 +326,17 @@ namespace GreyHackTerminalUI.VM
             canvas.Methods["render"] = (target, args, ctx) =>
             {
                 var window = GetCanvasWindow(ctx);
-                window?.Renderer.Render();
+                if (window == null)
+                {
+                    UnityEngine.Debug.LogError("[Intrinsics] render() called but window is null!");
+                    return null;
+                }
+                if (window.Renderer == null)
+                {
+                    UnityEngine.Debug.LogError("[Intrinsics] render() called but renderer is null!");
+                    return null;
+                }
+                window.Renderer.Render();
                 return null;
             };
 
@@ -469,7 +487,9 @@ namespace GreyHackTerminalUI.VM
         private static Color ParseColor(string colorStr)
         {
             if (string.IsNullOrEmpty(colorStr))
+            {
                 return Color.white;
+            }
 
             colorStr = colorStr.Trim().ToLowerInvariant();
 
@@ -533,6 +553,7 @@ namespace GreyHackTerminalUI.VM
                 }
             }
 
+            // Fall back to white for unrecognized colors
             return Color.white;
         }
     }

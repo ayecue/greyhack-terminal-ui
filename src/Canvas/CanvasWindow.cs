@@ -179,11 +179,22 @@ namespace GreyHackTerminalUI.Canvas
             _canvasImage.color = Color.white;
         }
 
+        private void Update()
+        {
+            // Apply any pending texture updates on the main thread
+            if (_canvasRenderer != null && _canvasRenderer.NeedsApply)
+            {
+                _canvasRenderer.ApplyTexture();
+            }
+        }
+
         public void Show()
         {
+            UnityEngine.Debug.Log($"[CanvasWindow] Show() called for terminal {_terminalPID}, gameObject={gameObject?.name}");
             gameObject.SetActive(true);
             _isVisible = true;
             BringToFront();
+            UnityEngine.Debug.Log($"[CanvasWindow] Window is now visible: {_isVisible}, active: {gameObject?.activeSelf}");
         }
 
         public void Hide()

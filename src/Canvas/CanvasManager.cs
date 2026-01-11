@@ -37,21 +37,16 @@ namespace GreyHackTerminalUI.Canvas
         // Dictionary mapping terminal PID to VM instance (one VM per terminal)
         private Dictionary<int, VirtualMachine> _virtualMachines = new Dictionary<int, VirtualMachine>();
 
-        // Dictionary mapping terminal PID to VM busy state
-        private Dictionary<int, bool> _vmBusy = new Dictionary<int, bool>();
-
-        // Dictionary mapping terminal PID to queue of pending blocks (max 20 per terminal)
-        private Dictionary<int, Queue<PendingUIBlock>> _pendingBlocks = new Dictionary<int, Queue<PendingUIBlock>>();
-        private const int MAX_QUEUED_BLOCKS = 20;
-
-        // Script compilation cache - hash -> compiled chunk
-        private Dictionary<int, CachedScript> _scriptCache = new Dictionary<int, CachedScript>();
-        private const int MAX_CACHED_SCRIPTS = 100;
-        private long _cacheAccessCounter = 0;
-
-        // Reusable parser and compiler to reduce allocations
-        private Parser _sharedParser = new Parser();
-        private Compiler _sharedCompiler = new Compiler();
+        // Accumulated tokens per terminal - collect all scripts within a time window
+        private Dictionary<int, List<Token>> _accumulatedTokens = new Dictionary<int, List<Token>>();
+        
+        // Track which terminals have shown their window (to ensure first show always executes)
+        private HashSet<int> _terminalsWithVisibleWindow = new HashSet<int>();
+        
+        // Time-based batching: collect scripts for this duration before executing
+        private const float BATCH_INTERVAL = 0.033f; // ~30 FPS
+        private float _lastBatchTime = 0f;
+        private bool _isExecuting = false;
 
         // Lock for thread-safe access
         private readonly object _pendingLock = new object();
@@ -80,7 +75,6 @@ namespace GreyHackTerminalUI.Canvas
 
             _logger?.LogDebug("CanvasManager initialized");
         }
-
         private void Awake()
         {
             if (_instance != null && _instance != this)
@@ -146,7 +140,26 @@ namespace GreyHackTerminalUI.Canvas
             if (!output.Contains(Lexer.BLOCK_START))
                 return output;
 
+            // If we're currently executing, ignore incoming scripts
+            if (_isExecuting)
+            {
+                _blocksIgnoredThisSecond++;
+                _logger?.LogDebug($"[CanvasManager] Ignoring UI blocks while executing");
+                return StripUIBlocks(output);
+            }
+
             _logger?.LogDebug($"[CanvasManager] Found #UI{{ in output for terminal {terminalPID}, length={output.Length}");
+
+            // Clear any previously accumulated tokens - we only want the LATEST frame
+            // Each ProcessOutput call represents a complete frame from the game
+            lock (_pendingLock)
+            {
+                if (_accumulatedTokens.ContainsKey(terminalPID) && _accumulatedTokens[terminalPID].Count > 0)
+                {
+                    _blocksReplacedThisSecond++;
+                    _accumulatedTokens[terminalPID].Clear();
+                }
+            }
 
             // Create lexer and find all UI blocks
             Lexer lexer = new Lexer(output);
@@ -166,40 +179,27 @@ namespace GreyHackTerminalUI.Canvas
                     }
 
                     blockCount++;
+                    _blocksReceivedThisSecond++;
                     
-                    // Get the raw script content for cache key
-                    string scriptContent = lexer.GetBlockContent();
-                    
-                    // Use cached compilation if available
-                    CompiledChunk chunk = GetOrCompileScript(tokens, scriptContent);
-                    _logger?.LogDebug($"[CanvasManager] Block {blockCount}, code length: {chunk?.Code.Count ?? 0}");
-
-                    if (chunk != null)
+                    // Store tokens for this terminal - accumulate within a single print() call
+                    lock (_pendingLock)
                     {
-                        lock (_pendingLock)
+                        if (!_accumulatedTokens.ContainsKey(terminalPID))
                         {
-                            if (!_pendingBlocks.TryGetValue(terminalPID, out Queue<PendingUIBlock> queue))
-                            {
-                                queue = new Queue<PendingUIBlock>();
-                                _pendingBlocks[terminalPID] = queue;
-                            }
-
-                            // Remove oldest block if at max capacity
-                            if (queue.Count >= MAX_QUEUED_BLOCKS)
-                            {
-                                queue.Dequeue();
-                                _logger?.LogWarning($"[CanvasManager] Queue full for terminal {terminalPID}, dropping oldest block");
-                            }
-
-                            queue.Enqueue(new PendingUIBlock
-                            {
-                                TerminalPID = terminalPID,
-                                Chunk = chunk
-                            });
+                            _accumulatedTokens[terminalPID] = new List<Token>();
                         }
-
-                        _logger?.LogDebug($"[CanvasManager] Queued UI block for terminal {terminalPID}");
+                        _accumulatedTokens[terminalPID].AddRange(tokens);
                     }
+                }
+                
+                _logger?.LogDebug($"[CanvasManager] Accumulated {blockCount} blocks for terminal {terminalPID}");
+                
+                // If this is the first frame (window not shown yet), execute immediately
+                bool isFirstFrame = !_terminalsWithVisibleWindow.Contains(terminalPID);
+                if (isFirstFrame)
+                {
+                    _logger?.LogDebug($"[CanvasManager] First frame for terminal {terminalPID} - executing immediately");
+                    ExecuteAccumulatedTokens(terminalPID);
                 }
             }
             catch (System.Exception ex)
@@ -211,43 +211,110 @@ namespace GreyHackTerminalUI.Canvas
             return StripUIBlocks(output);
         }
 
+        // Debug counter for logging
+        private int _frameCount = 0;
+        private float _lastLogTime = 0f;
+        private int _blocksReceivedThisSecond = 0;
+        private int _blocksExecutedThisSecond = 0;
+        private int _blocksIgnoredThisSecond = 0;
+        private int _blocksReplacedThisSecond = 0;
+
         private void Update()
         {
-            ExecutePendingBlocks();
-        }
-
-        private void ExecutePendingBlocks()
-        {
-            // Execute one block per terminal per frame
-            List<PendingUIBlock> blocksToExecute = new List<PendingUIBlock>();
-            List<int> emptyTerminals = new List<int>();
-
+            _frameCount++;
+            
+            // Log stats every second
+            float now = Time.time;
+            if (now - _lastLogTime >= 1.0f)
+            {
+                _logger?.LogInfo($"[CanvasManager] Stats: received={_blocksReceivedThisSecond}, executed={_blocksExecutedThisSecond}, ignored={_blocksIgnoredThisSecond}, replaced={_blocksReplacedThisSecond}");
+                _blocksReceivedThisSecond = 0;
+                _blocksExecutedThisSecond = 0;
+                _blocksIgnoredThisSecond = 0;
+                _blocksReplacedThisSecond = 0;
+                _lastLogTime = now;
+            }
+            
+            // Time-based batching: execute accumulated tokens at regular intervals
+            float currentTime = Time.time;
+            
+            if (currentTime - _lastBatchTime < BATCH_INTERVAL)
+                return;
+            
+            _lastBatchTime = currentTime;
+            
+            // Execute accumulated tokens for all terminals
+            List<int> terminalsToExecute = new List<int>();
+            
             lock (_pendingLock)
             {
-                if (_pendingBlocks.Count == 0)
-                    return;
-
-                foreach (var kvp in _pendingBlocks)
+                foreach (var kvp in _accumulatedTokens)
                 {
-                    int terminalPID = kvp.Key;
-                    
-                    // Only execute if VM is not busy
-                    if (kvp.Value.Count > 0 && !_vmBusy.GetValueOrDefault(terminalPID, false))
+                    if (kvp.Value.Count > 0)
                     {
-                        blocksToExecute.Add(kvp.Value.Dequeue());
-                        if (kvp.Value.Count == 0)
-                            emptyTerminals.Add(kvp.Key);
+                        terminalsToExecute.Add(kvp.Key);
                     }
                 }
-
-                foreach (var terminalPID in emptyTerminals)
-                    _pendingBlocks.Remove(terminalPID);
             }
-
-            // Execute each block
-            foreach (var block in blocksToExecute)
+            
+            foreach (var terminalPID in terminalsToExecute)
             {
-                ExecuteBlock(block);
+                ExecuteAccumulatedTokens(terminalPID);
+            }
+        }
+
+        private void ExecuteAccumulatedTokens(int terminalPID)
+        {
+            List<Token> tokens;
+            
+            lock (_pendingLock)
+            {
+                if (!_accumulatedTokens.TryGetValue(terminalPID, out tokens) || tokens.Count == 0)
+                    return;
+                
+                // Take the tokens and clear the accumulator
+                _accumulatedTokens[terminalPID] = new List<Token>();
+            }
+            
+            _isExecuting = true;
+            
+            try
+            {
+                // Compile and execute
+                var parser = new Parser();
+                var compiler = new Compiler();
+                var ast = parser.Parse(tokens);
+                CompiledChunk chunk = compiler.Compile(ast);
+                
+                if (chunk != null)
+                {
+                    // Log chunk info for debugging
+                    _logger?.LogDebug($"[CanvasManager] Compiled chunk: {chunk.Code.Count} bytecodes, {chunk.Constants.Count} constants, {chunk.Names.Count} names");
+                    if (chunk.Constants.Count > 0 && chunk.Constants.Count <= 10)
+                    {
+                        _logger?.LogDebug($"[CanvasManager] Constants: [{string.Join(", ", chunk.Constants)}]");
+                    }
+                    if (chunk.Names.Count > 0 && chunk.Names.Count <= 10)
+                    {
+                        _logger?.LogDebug($"[CanvasManager] Names: [{string.Join(", ", chunk.Names)}]");
+                    }
+                    
+                    _blocksExecutedThisSecond++;
+                    _logger?.LogDebug($"[CanvasManager] Executing {tokens.Count} tokens for terminal {terminalPID}");
+                    ExecuteBlock(new PendingUIBlock
+                    {
+                        TerminalPID = terminalPID,
+                        Chunk = chunk
+                    });
+                }
+            }
+            catch (System.Exception ex)
+            {
+                _logger?.LogError($"[CanvasManager] Error executing accumulated tokens: {ex.Message}\n{ex.StackTrace}");
+            }
+            finally
+            {
+                _isExecuting = false;
             }
         }
 
@@ -264,37 +331,24 @@ namespace GreyHackTerminalUI.Canvas
                 // Stop any previous execution before starting new one
                 vm.Stop();
                 
-                // Mark VM as busy
-                lock (_pendingLock)
+                // Execute synchronously on main thread - simpler and avoids threading issues
+                try
                 {
-                    _vmBusy[block.TerminalPID] = true;
-                }
-                
-                // Execute the bytecode on background thread using BepInEx ThreadingHelper
-                ThreadingHelper.Instance.StartAsyncInvoke(() => () =>
-                {
-                    try
-                    {
-                        var result = vm.Execute(block.Chunk, context);
+                    var result = vm.Execute(block.Chunk, context);
 
-                        if (result.Error != null)
-                        {
-                            _logger?.LogError($"[CanvasManager] VM execution error: {result.Error}");
-                        }
-                        else
-                        {
-                            _logger?.LogDebug($"[CanvasManager] VM executed successfully, result: {result.ReturnValue ?? "null"}");
-                        }
-                    }
-                    finally
+                    if (result.Error != null)
                     {
-                        // Clear busy flag when execution completes
-                        lock (_pendingLock)
-                        {
-                            _vmBusy[block.TerminalPID] = false;
-                        }
+                        _logger?.LogError($"[CanvasManager] VM execution error: {result.Error}");
                     }
-                });
+                    else
+                    {
+                        _logger?.LogDebug($"[CanvasManager] VM executed successfully, result: {result.ReturnValue ?? "null"}");
+                    }
+                }
+                catch (System.Exception execEx)
+                {
+                    _logger?.LogError($"[CanvasManager] VM execution exception: {execEx.Message}");
+                }
             }
             catch (System.Exception ex)
             {
@@ -382,52 +436,14 @@ namespace GreyHackTerminalUI.Canvas
             return hash;
         }
 
-        // Get compiled script from cache or compile and cache it
+        // Compile script fresh each time (caching disabled for debugging)
         private CompiledChunk GetOrCompileScript(List<Token> tokens, string scriptContent)
         {
-            int hash = ComputeScriptHash(scriptContent);
-            
-            lock (_pendingLock)
-            {
-                if (_scriptCache.TryGetValue(hash, out CachedScript cached))
-                {
-                    cached.LastUsed = ++_cacheAccessCounter;
-                    return cached.Chunk;
-                }
-            }
-
-            // Cache miss - compile the script using shared instances
-            var ast = _sharedParser.Parse(tokens);
-            CompiledChunk chunk = _sharedCompiler.Compile(ast);
-
-            if (chunk != null)
-            {
-                lock (_pendingLock)
-                {
-                    // Evict oldest entry if cache is full
-                    if (_scriptCache.Count >= MAX_CACHED_SCRIPTS)
-                    {
-                        int oldestKey = 0;
-                        long oldestTime = long.MaxValue;
-                        foreach (var kvp in _scriptCache)
-                        {
-                            if (kvp.Value.LastUsed < oldestTime)
-                            {
-                                oldestTime = kvp.Value.LastUsed;
-                                oldestKey = kvp.Key;
-                            }
-                        }
-                        _scriptCache.Remove(oldestKey);
-                    }
-
-                    _scriptCache[hash] = new CachedScript
-                    {
-                        Chunk = chunk,
-                        LastUsed = ++_cacheAccessCounter
-                    };
-                }
-            }
-
+            // Compile fresh each time - no caching, no shared state
+            var parser = new Parser();
+            var compiler = new Compiler();
+            var ast = parser.Parse(tokens);
+            CompiledChunk chunk = compiler.Compile(ast);
             return chunk;
         }
 
@@ -491,14 +507,22 @@ namespace GreyHackTerminalUI.Canvas
             return null;
         }
 
+        public void MarkWindowVisible(int terminalPID)
+        {
+            _terminalsWithVisibleWindow.Add(terminalPID);
+            _logger?.LogDebug($"Marked terminal {terminalPID} as having visible window");
+        }
+
         public void DestroyWindow(int terminalPID)
         {
-            // Clear any pending blocks and busy flag for this terminal
+            // Remove any accumulated tokens for this terminal
             lock (_pendingLock)
             {
-                _pendingBlocks.Remove(terminalPID);
-                _vmBusy.Remove(terminalPID);
+                _accumulatedTokens.Remove(terminalPID);
             }
+
+            // Clean up visibility tracking
+            _terminalsWithVisibleWindow.Remove(terminalPID);
 
             if (_canvasWindows.TryGetValue(terminalPID, out CanvasWindow window))
             {
@@ -526,12 +550,14 @@ namespace GreyHackTerminalUI.Canvas
 
         public void DestroyAllWindows()
         {
-            // Clear all pending blocks and busy flags
+            // Clear all accumulated tokens
             lock (_pendingLock)
             {
-                _pendingBlocks.Clear();
-                _vmBusy.Clear();
+                _accumulatedTokens.Clear();
             }
+            
+            // Clear visibility tracking
+            _terminalsWithVisibleWindow.Clear();
 
             foreach (var kvp in _canvasWindows)
             {

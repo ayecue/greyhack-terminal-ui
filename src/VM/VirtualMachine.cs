@@ -121,7 +121,11 @@ namespace GreyHackTerminalUI.VM
                     switch (op)
                     {
                         case OpCode.PUSH_CONST:
-                            Push(_chunk.Constants[ReadByte()]);
+                            {
+                                // Read 2-byte index to support >255 constants
+                                int constIndex = ReadShortUnsigned();
+                                Push(_chunk.Constants[constIndex]);
+                            }
                             break;
 
                         case OpCode.PUSH_NULL:
@@ -351,6 +355,13 @@ namespace GreyHackTerminalUI.VM
             byte high = _chunk.Code[_ip++];
             byte low = _chunk.Code[_ip++];
             return (short)((high << 8) | low);
+        }
+
+        private int ReadShortUnsigned()
+        {
+            byte high = _chunk.Code[_ip++];
+            byte low = _chunk.Code[_ip++];
+            return (high << 8) | low;
         }
 
         private void Push(object value)

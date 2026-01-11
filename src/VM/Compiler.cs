@@ -39,6 +39,14 @@ namespace GreyHackTerminalUI.VM
             Code.Add((byte)op);
             Code.Add((byte)arg);
         }
+        
+        // For constants and other potentially large indices, use 2 bytes
+        public void EmitOpWithShortArg(OpCode op, int arg)
+        {
+            Code.Add((byte)op);
+            Code.Add((byte)((arg >> 8) & 0xFF)); // high byte
+            Code.Add((byte)(arg & 0xFF));        // low byte
+        }
 
         public void EmitJump(OpCode op)
         {
@@ -289,7 +297,8 @@ namespace GreyHackTerminalUI.VM
                 case LiteralType.Number:
                 case LiteralType.String:
                     int constIndex = _chunk.AddConstant(literal.Value);
-                    _chunk.EmitOpWithArg(OpCode.PUSH_CONST, constIndex);
+                    // Use 2-byte index to support >255 constants
+                    _chunk.EmitOpWithShortArg(OpCode.PUSH_CONST, constIndex);
                     break;
             }
         }
