@@ -41,15 +41,12 @@ namespace GreyHackTerminalUI.VM
             {
                 if (args.Length < 1) return false;
                 string name = args[0]?.ToString();
-                bool result = ctx.HasVariable(name);
-                Debug.Log($"[UI Script] hasInContext(\"{name}\") = {result}, vars: {string.Join(", ", ctx.Variables.Keys)}");
-                return result;
+                return ctx.HasVariable(name);
             });
 
             RegisterFunction("print", (args, ctx) =>
             {
-                string message = args.Length > 0 ? args[0]?.ToString() ?? "null" : "";
-                Debug.Log($"[UI Script] {message}");
+                // Print from UI script - silent by default
                 return null;
             });
 

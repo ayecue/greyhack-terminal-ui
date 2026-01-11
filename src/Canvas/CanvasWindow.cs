@@ -190,11 +190,9 @@ namespace GreyHackTerminalUI.Canvas
 
         public void Show()
         {
-            UnityEngine.Debug.Log($"[CanvasWindow] Show() called for terminal {_terminalPID}, gameObject={gameObject?.name}");
             gameObject.SetActive(true);
             _isVisible = true;
             BringToFront();
-            UnityEngine.Debug.Log($"[CanvasWindow] Window is now visible: {_isVisible}, active: {gameObject?.activeSelf}");
         }
 
         public void Hide()

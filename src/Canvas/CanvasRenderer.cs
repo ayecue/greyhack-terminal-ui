@@ -14,11 +14,6 @@ namespace GreyHackTerminalUI.Canvas
         private Color _clearColor = Color.black;
         private bool _needsApply = false;
         private readonly object _bufferLock = new object();
-        
-        // Debug counters
-        private int _renderCount = 0;
-        private int _clearCount = 0;
-        private float _lastLogTime = 0f;
 
         public int Width => _width;
         public int Height => _height;
@@ -62,13 +57,6 @@ namespace GreyHackTerminalUI.Canvas
         public void Clear(Color color)
         {
             _clearColor = color;
-            _clearCount++;
-            
-            // Debug: Log if we're clearing to white (shouldn't happen normally)
-            if (color.r > 0.9f && color.g > 0.9f && color.b > 0.9f)
-            {
-                UnityEngine.Debug.LogWarning($"[CanvasRenderer] Clear called with near-white color: R={color.r}, G={color.g}, B={color.b}");
-            }
             
             for (int i = 0; i < _backBuffer.Length; i++)
             {
@@ -428,25 +416,10 @@ namespace GreyHackTerminalUI.Canvas
             }
         }
 
-        /// <summary>
-        /// Apply pixels to texture immediately - no throttling for now
-        /// </summary>
         public void Render()
         {
             if (!_isDirty || _backBuffer == null || _texture == null)
                 return;
-
-            _renderCount++;
-            
-            // Log frame statistics every second
-            float now = UnityEngine.Time.time;
-            if (now - _lastLogTime >= 1.0f)
-            {
-                UnityEngine.Debug.Log($"[CanvasRenderer] Stats: {_renderCount} renders, {_clearCount} clears in last second");
-                _renderCount = 0;
-                _clearCount = 0;
-                _lastLogTime = now;
-            }
 
             // Swap buffers - copy back buffer to front buffer atomically
             lock (_bufferLock)
@@ -461,12 +434,8 @@ namespace GreyHackTerminalUI.Canvas
             _needsApply = false;
         }
 
-        /// <summary>
-        /// Called from CanvasWindow.Update() - no longer needed but kept for compatibility
-        /// </summary>
         public void ApplyTexture()
         {
-            // Just call Render
             Render();
         }
 

@@ -13,7 +13,6 @@ namespace GreyHackTerminalUI.Patches
         public static void Initialize(ManualLogSource logger)
         {
             _logger = logger;
-            StringCompressorHelper.Initialize(logger);
         }
 
         [HarmonyPatch(typeof(PlayerClientMethods), nameof(PlayerClientMethods.PrintSentClientRpc))]
@@ -73,11 +72,21 @@ namespace GreyHackTerminalUI.Patches
         [HarmonyPostfix]
         public static void CloseProgramClientRpc_Postfix(int PID, byte[] zipProcs, bool isScript)
         {
-            // When a program is closed, destroy any associated canvas window
-            if (CanvasManager.Instance != null)
-            {
-                CanvasManager.Instance.DestroyWindow(PID);
-            }
+            CanvasManager.Instance.DestroyWindow(PID);
+        }
+
+        [HarmonyPatch(typeof(Terminal), "CloseWindow")]
+        [HarmonyPostfix]
+        static void Postfix_CloseWindow(Terminal __instance)
+        {
+            CanvasManager.Instance.DestroyWindow(__instance.GetPID());
+        }
+
+        [HarmonyPatch(typeof(Ventana), nameof(Ventana.CloseTaskBar), new System.Type[] { })]
+        [HarmonyPostfix]
+        static void Postfix_CloseTaskBar(Ventana __instance)
+        {
+            CanvasManager.Instance.DestroyWindow(__instance.GetPID());
         }
     }
 }
