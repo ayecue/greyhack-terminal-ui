@@ -613,16 +613,12 @@ namespace GreyHackTerminalUI.VM
                 
                 int terminalPID = ctx.GetInternal("terminalPID") as int? ?? 0;
                 
-                UnityEngine.Debug.Log($"[Sound.create] Creating sound '{soundName}' for terminal PID {terminalPID}");
-                
                 if (terminalPID == 0)
                     throw new VMException("Terminal PID not found");
                 
                 var player = SoundManager.Instance.CreateSound(terminalPID, soundName);
                 if (player == null)
                     throw new VMException("Cannot create sound: maximum of 100 sounds per terminal reached");
-                
-                UnityEngine.Debug.Log($"[Sound.create] Successfully created sound '{soundName}'");
                 
                 return new SoundInstance(soundName, terminalPID);
             };
@@ -741,8 +737,10 @@ namespace GreyHackTerminalUI.VM
                 
                 var player = SoundManager.Instance?.GetSound(instance.TerminalPID, instance.Name);
                 if (player == null)
+                {
                     throw new VMException($"Sound '{instance.Name}' no longer exists");
-                
+                }
+
                 player.Play();
                 return null;
             };
@@ -776,7 +774,7 @@ namespace GreyHackTerminalUI.VM
                 
                 if (args.Length < 1)
                     throw new VMException("setLoop requires a boolean parameter");
-                
+
                 bool enabled = IsTruthy(args[0]);
                 
                 var player = SoundManager.Instance?.GetSound(instance.TerminalPID, instance.Name);
