@@ -373,6 +373,26 @@ print("#UI{
 }")
 ```
 
+#### `Sound.exists(name)`
+
+Checks if a named sound instance exists. Returns `true` if the sound exists, `false` otherwise.
+
+- `name` (string): Name of the sound instance to check
+
+```greyscript
+print("#UI{
+    if Sound.exists(""background"") then
+        bg = Sound.get(""background"")
+        bg.play()
+    else
+        bg = Sound.create(""background"")
+        bg.addNote(60, 0.5)
+        bg.setLoop(true)
+        bg.play()
+    end if
+}")
+```
+
 ### Sound Instance Methods
 
 Once you have a sound instance (from `Sound.create()` or `Sound.get()`), you can use these methods:
@@ -444,6 +464,20 @@ print("#UI{
 }")
 ```
 
+#### `instance.setLoop(enabled)`
+
+Enables or disables looping for this sound instance. When enabled, the sound will restart from the beginning after all notes finish playing.
+
+- `enabled` (boolean): `true` to enable looping, `false` to disable
+
+```greyscript
+print("#UI{
+    bgMusic = Sound.get(""background"")
+    bgMusic.setLoop(true)
+    bgMusic.play()  // Will loop infinitely
+}")
+```
+
 #### `instance.isPlaying`
 
 Read-only property that returns `true` if this sound instance is currently playing, `false` otherwise.
@@ -457,7 +491,41 @@ print("#UI{
 }")
 ```
 
+#### `instance.loop`
+
+Read-only property that returns `true` if this sound instance has looping enabled, `false` otherwise.
+
+```greyscript
+print("#UI{
+    melody = Sound.get(""melody"")
+    if melody.isPlaying then
+        print(""Still playing..."")
+    end if
+}")
+```
+
 ### Sound Examples
+
+#### Background Music with Looping
+
+```greyscript
+print("#UI{
+    // Create background music that loops infinitely
+    bgMusic = Sound.create(""background"")
+    bgMusic.addNote(60, 0.5)  // C
+    bgMusic.addNote(64, 0.5)  // E
+    bgMusic.addNote(67, 0.5)  // G
+    bgMusic.addNote(64, 0.5)  // E
+    bgMusic.setLoop(true)
+    bgMusic.play()
+}")
+
+// Later, stop the background music
+print("#UI{
+    bg = Sound.get(""background"")
+    bg.stop()  // Stops and disables loop
+}")
+```
 
 #### Multiple Sound Effects
 

@@ -10,10 +10,23 @@ namespace GreyHackTerminalUI.VM
 
         public Dictionary<string, object> Variables { get; } = new Dictionary<string, object>();
         public Dictionary<string, object> Globals { get; } = new Dictionary<string, object>();
+        
+        // Internal state not accessible to user scripts
+        private Dictionary<string, object> _internalState = new Dictionary<string, object>();
 
         public void ClearVariables()
         {
             Variables.Clear();
+        }
+        
+        public void SetInternal(string key, object value)
+        {
+            _internalState[key] = value;
+        }
+        
+        public object GetInternal(string key)
+        {
+            return _internalState.TryGetValue(key, out var value) ? value : null;
         }
 
         public object GetVariable(string name)

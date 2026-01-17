@@ -41,6 +41,8 @@ namespace GreyHackTerminalUI.Canvas
             _vmContext = new VMContext();
             _vmContext.SetGlobal("Canvas", "Canvas");
             _vmContext.SetGlobal("Sound", "Sound");
+            // Store terminal PID internally (not accessible to user scripts)
+            _vmContext.SetInternal("terminalPID", terminalPID);
         }
 
         public CanvasWindow GetOrCreateWindow(Transform parent)

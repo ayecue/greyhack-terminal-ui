@@ -10,6 +10,7 @@ namespace GreyHackTerminalUI.Sound
         private int _currentNoteIndex = 0;
         private float _currentNoteTime = 0f;
         private bool _isPlaying = false;
+        private bool _loop = false;
         private AudioSource _audioSource;
         
         private const int SAMPLE_RATE = 44100;
@@ -21,6 +22,7 @@ namespace GreyHackTerminalUI.Sound
         
         public int TerminalPID { get; set; }
         public bool IsPlaying => _isPlaying;
+        public bool Loop { get => _loop; set => _loop = value; }
         
         private void Awake()
         {
@@ -55,23 +57,37 @@ namespace GreyHackTerminalUI.Sound
                 return;
             }
             
+            Debug.Log($"[SoundPlayer] Terminal {TerminalPID} starting playback of {_notes.Count} notes");
+            
             Stop();
             _currentNoteIndex = 0;
             _currentNoteTime = 0f;
             _isPlaying = true;
             _phase = 0f;
             
+            // Ensure audio source is initialized
+            if (_audioSource == null)
+            {
+                Debug.LogError($"[SoundPlayer] Terminal {TerminalPID} AudioSource is null!");
+                _audioSource = gameObject.AddComponent<AudioSource>();
+                _audioSource.playOnAwake = false;
+                _audioSource.loop = true;
+                _audioSource.volume = 1f;
+            }
+            
             // Start the audio clip
             if (!_audioSource.isPlaying)
             {
                 _audioSource.clip = AudioClip.Create("GeneratedSound", SAMPLE_RATE * 2, 1, SAMPLE_RATE, true, OnAudioRead);
                 _audioSource.Play();
+                Debug.Log($"[SoundPlayer] Terminal {TerminalPID} AudioSource.Play() called, isPlaying={_audioSource.isPlaying}");
             }
         }
         
         public void Stop()
         {
             _isPlaying = false;
+            _loop = false;
             _audioSource.Stop();
             _currentVolume = 0f;
             _currentFrequency = 0f;
@@ -93,11 +109,20 @@ namespace GreyHackTerminalUI.Sound
                     _currentNoteIndex++;
                     _currentNoteTime = 0f;
                     
-                    // If we've played all notes, stop
+                    // If we've played all notes
                     if (_currentNoteIndex >= _notes.Count)
                     {
-                        Stop();
-                        return;
+                        if (_loop)
+                        {
+                            // Restart from beginning
+                            _currentNoteIndex = 0;
+                            _currentNoteTime = 0f;
+                        }
+                        else
+                        {
+                            Stop();
+                            return;
+                        }
                     }
                 }
             }

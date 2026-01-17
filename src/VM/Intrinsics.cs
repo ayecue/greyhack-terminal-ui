@@ -169,7 +169,7 @@ namespace GreyHackTerminalUI.VM
                 if (args.Length < 2) return null;
                 
                 // Cooldown to prevent abuse
-                int terminalPID = ctx.GetVariable("__terminalPID") as int? ?? 0;
+                int terminalPID = ctx.GetInternal("terminalPID") as int? ?? 0;
                 float currentTime = Time.time;
                 if (_lastSetSizeTime.TryGetValue(terminalPID, out float lastTime))
                 {
@@ -410,6 +410,19 @@ namespace GreyHackTerminalUI.VM
                 }
                 throw new VMException($"Unknown method '{methodName}' on '{intrinsicObj.Name}'");
             }
+            
+            // Check if it's a SoundInstance
+            if (target is SoundInstance soundInstance)
+            {
+                if (_objects.TryGetValue("SoundInstance", out var soundObj))
+                {
+                    if (soundObj.Methods.TryGetValue(methodName, out var method))
+                    {
+                        return method(target, args, context);
+                    }
+                    throw new VMException($"Unknown method '{methodName}' on sound instance '{soundInstance.Name}'");
+                }
+            }
 
             throw new VMException($"Cannot call method '{methodName}' on {target?.GetType().Name ?? "null"}");
         }
@@ -430,6 +443,19 @@ namespace GreyHackTerminalUI.VM
                     if (obj.Methods.ContainsKey(memberName))
                     {
                         return $"{objName}.{memberName}"; // Method reference
+                    }
+                }
+            }
+            
+            // Check if it's a SoundInstance
+            if (target is SoundInstance soundInstance)
+            {
+                if (_objects.TryGetValue("SoundInstance", out var soundObj))
+                {
+                    // Check for getter
+                    if (soundObj.Getters.TryGetValue(memberName, out var getter))
+                    {
+                        return getter(target, context);
                     }
                 }
             }
@@ -483,6 +509,16 @@ namespace GreyHackTerminalUI.VM
             if (value is int i) return i;
             if (value is string s && double.TryParse(s, out double parsed)) return parsed;
             return 0;
+        }
+
+        private static bool IsTruthy(object value)
+        {
+            if (value == null) return false;
+            if (value is bool b) return b;
+            if (value is double d) return d != 0;
+            if (value is int i) return i != 0;
+            if (value is string s) return s.Length > 0;
+            return true;
         }
 
         private static Color ParseColor(string colorStr)
@@ -575,13 +611,18 @@ namespace GreyHackTerminalUI.VM
                 if (SoundManager.Instance == null)
                     throw new VMException("SoundManager not initialized");
                 
-                int terminalPID = ctx.GetVariable("__terminalPID") as int? ?? 0;
+                int terminalPID = ctx.GetInternal("terminalPID") as int? ?? 0;
+                
+                UnityEngine.Debug.Log($"[Sound.create] Creating sound '{soundName}' for terminal PID {terminalPID}");
+                
                 if (terminalPID == 0)
                     throw new VMException("Terminal PID not found");
                 
                 var player = SoundManager.Instance.CreateSound(terminalPID, soundName);
                 if (player == null)
                     throw new VMException("Cannot create sound: maximum of 100 sounds per terminal reached");
+                
+                UnityEngine.Debug.Log($"[Sound.create] Successfully created sound '{soundName}'");
                 
                 return new SoundInstance(soundName, terminalPID);
             };
@@ -599,7 +640,7 @@ namespace GreyHackTerminalUI.VM
                 if (SoundManager.Instance == null)
                     throw new VMException("SoundManager not initialized");
                 
-                int terminalPID = ctx.GetVariable("__terminalPID") as int? ?? 0;
+                int terminalPID = ctx.GetInternal("terminalPID") as int? ?? 0;
                 if (terminalPID == 0)
                     throw new VMException("Terminal PID not found");
                 
@@ -623,12 +664,33 @@ namespace GreyHackTerminalUI.VM
                 if (SoundManager.Instance == null)
                     return null;
                 
-                int terminalPID = ctx.GetVariable("__terminalPID") as int? ?? 0;
+                int terminalPID = ctx.GetInternal("terminalPID") as int? ?? 0;
                 if (terminalPID == 0)
                     return null;
                 
                 SoundManager.Instance.DestroySound(terminalPID, soundName);
                 return null;
+            };
+
+            // Sound.exists(name) - checks if a named sound instance exists
+            sound.Methods["exists"] = (target, args, ctx) =>
+            {
+                if (args.Length < 1) 
+                    throw new VMException("Sound.exists requires a name parameter");
+                
+                string soundName = args[0]?.ToString();
+                if (string.IsNullOrWhiteSpace(soundName))
+                    return false;
+                
+                if (SoundManager.Instance == null)
+                    return false;
+                
+                int terminalPID = ctx.GetInternal("terminalPID") as int? ?? 0;
+                if (terminalPID == 0)
+                    return false;
+                
+                var player = SoundManager.Instance.GetSound(terminalPID, soundName);
+                return player != null;
             };
 
             RegisterObject(sound);
@@ -704,6 +766,35 @@ namespace GreyHackTerminalUI.VM
                 
                 var player = SoundManager.Instance?.GetSound(instance.TerminalPID, instance.Name);
                 return player?.IsPlaying ?? false;
+            };
+
+            // instance.setLoop(enabled)
+            soundInstance.Methods["setLoop"] = (target, args, ctx) =>
+            {
+                if (!(target is SoundInstance instance))
+                    throw new VMException("Invalid sound instance");
+                
+                if (args.Length < 1)
+                    throw new VMException("setLoop requires a boolean parameter");
+                
+                bool enabled = IsTruthy(args[0]);
+                
+                var player = SoundManager.Instance?.GetSound(instance.TerminalPID, instance.Name);
+                if (player != null)
+                {
+                    player.Loop = enabled;
+                }
+                return null;
+            };
+
+            // instance.loop (getter)
+            soundInstance.Getters["loop"] = (target, ctx) =>
+            {
+                if (!(target is SoundInstance instance))
+                    return false;
+                
+                var player = SoundManager.Instance?.GetSound(instance.TerminalPID, instance.Name);
+                return player?.Loop ?? false;
             };
 
             RegisterObject(soundInstance);
