@@ -3,6 +3,7 @@ using BepInEx;
 using BepInEx.Logging;
 using HarmonyLib;
 using GreyHackTerminalUI.Canvas;
+using GreyHackTerminalUI.Sound;
 using GreyHackTerminalUI.Patches;
 #if BEPINEX6
 using BepInEx.Unity.Mono;
@@ -30,6 +31,7 @@ namespace GreyHackTerminalUI
             // Initialize components
             TerminalPatches.Initialize(Logger);
             CanvasManager.Initialize(Logger);
+            SoundManager.Initialize(Logger);
 
             // Apply all patches
             try
@@ -43,17 +45,6 @@ namespace GreyHackTerminalUI
             }
 
             Logger.LogDebug($"Plugin {PluginInfo.PLUGIN_GUID} is loaded!");
-            Logger.LogDebug("UI scripting available via #UI{ ... } blocks in print statements");
-            Logger.LogDebug("Example:");
-            Logger.LogDebug("  print(\"#UI{");
-            Logger.LogDebug("    Canvas.setSize(320, 240)");
-            Logger.LogDebug("    Canvas.show()");
-            Logger.LogDebug("    Canvas.clear(\"black\")");
-            Logger.LogDebug("    Canvas.fillRect(\"red\", 10, 10, 50, 50)");
-            Logger.LogDebug("    Canvas.render()");
-            Logger.LogDebug("  }\")");
-            Logger.LogDebug("Features: variables, math, if/then/else, while loops, persistent state");
-            Logger.LogDebug("See README.md for full documentation");
         }
 
         void OnDestroy()

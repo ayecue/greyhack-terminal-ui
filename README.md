@@ -327,10 +327,239 @@ end while
 
 ---
 
+## Sound API Reference
+
+The `Sound` object provides methods for creating and managing multiple named sound instances with MIDI-based melodies.
+
+### Sound Manager Methods
+
+#### `Sound.create(name)`
+
+Creates a new named sound instance. Returns a sound instance object that can be used to add notes and control playback.
+
+- `name` (string): Unique identifier for this sound instance
+
+```greyscript
+print("#UI{
+    welcome = Sound.create(""welcome"")
+    gameOver = Sound.create(""gameOver"")
+}")
+```
+
+**Note:** If a sound with the same name already exists, it will return the existing instance.
+
+#### `Sound.get(name)`
+
+Retrieves an existing named sound instance. Throws an error if the sound doesn't exist.
+
+- `name` (string): Name of the sound instance to retrieve
+
+```greyscript
+print("#UI{
+    welcome = Sound.get(""welcome"")
+    welcome.play()
+}")
+```
+
+#### `Sound.destroy(name)`
+
+Destroys a named sound instance and frees its resources.
+
+- `name` (string): Name of the sound instance to destroy
+
+```greyscript
+print("#UI{
+    Sound.destroy(""welcome"")
+}")
+```
+
+### Sound Instance Methods
+
+Once you have a sound instance (from `Sound.create()` or `Sound.get()`), you can use these methods:
+
+#### `instance.addNote(pitch, duration [, velocity])`
+
+Adds a MIDI note to this sound instance's buffer.
+
+- `pitch` (int): MIDI note number (0-127). Middle C = 60, one octave up = 72, one octave down = 48
+- `duration` (float): How long to play the note in seconds
+- `velocity` (float, optional): Volume/intensity of the note (0.0-1.0, default 0.7)
+
+```greyscript
+print("#UI{
+    melody = Sound.create(""melody"")
+    // Play middle C for half a second
+    melody.addNote(60, 0.5)
+    
+    // Play E with custom volume
+    melody.addNote(64, 0.5, 0.9)
+}")
+```
+
+**MIDI Note Reference:**
+- 60 = Middle C (C4)
+- 61 = C# / Db
+- 62 = D
+- 63 = D# / Eb
+- 64 = E
+- 65 = F
+- 66 = F# / Gb
+- 67 = G
+- 68 = G# / Ab
+- 69 = A (440 Hz)
+- 70 = A# / Bb
+- 71 = B
+- 72 = C (one octave up)
+
+#### `instance.play()`
+
+Starts playing all the notes in this instance's buffer. Notes play sequentially in the order they were added.
+
+```greyscript
+print("#UI{
+    melody = Sound.get(""melody"")
+    melody.play()
+}")
+```
+
+#### `instance.stop()`
+
+Stops this sound instance immediately.
+
+```greyscript
+print("#UI{
+    melody = Sound.get(""melody"")
+    melody.stop()
+}")
+```
+
+#### `instance.clear()`
+
+Clears all notes from this sound instance's buffer and stops playback.
+
+```greyscript
+print("#UI{
+    melody = Sound.get(""melody"")
+    melody.clear()
+}")
+```
+
+#### `instance.isPlaying`
+
+Read-only property that returns `true` if this sound instance is currently playing, `false` otherwise.
+
+```greyscript
+print("#UI{
+    melody = Sound.get(""melody"")
+    if melody.isPlaying then
+        print(""Still playing..."")
+    end if
+}")
+```
+
+### Sound Examples
+
+#### Multiple Sound Effects
+
+```greyscript
+print("#UI{
+    // Create different sounds for different events
+    welcome = Sound.create(""welcome"")
+    welcome.addNote(60, 0.3)  // C
+    welcome.addNote(64, 0.3)  // E
+    welcome.addNote(67, 0.4)  // G
+    
+    error = Sound.create(""error"")
+    error.addNote(65, 0.2, 0.9)  // F
+    error.addNote(60, 0.4, 0.8)  // C (lower)
+    
+    // Play welcome sound
+    welcome.play()
+}")
+```
+
+#### Simple Melody
+
+```greyscript
+print("#UI{
+    melody = Sound.create(""melody"")
+    melody.clear()
+    melody.addNote(60, 0.4)  // C
+    melody.addNote(62, 0.4)  // D
+    melody.addNote(64, 0.4)  // E
+    melody.addNote(65, 0.4)  // F
+    melody.addNote(67, 0.4)  // G
+    melody.play()
+}")
+```
+
+#### Game Over Sound
+
+```greyscript
+print("#UI{
+    gameOver = Sound.create(""gameOver"")
+    gameOver.clear()
+    gameOver.addNote(67, 0.3, 0.8)  // G
+    gameOver.addNote(64, 0.3, 0.7)  // E
+    gameOver.addNote(60, 0.6, 0.9)  // C (longer, louder)
+    gameOver.play()
+}")
+```
+
+#### Sound with Animation
+
+```greyscript
+// In your game loop
+if playerScored then
+    print("#UI{
+        // Play success sound
+        success = Sound.get(""success"")
+        success.clear()
+        success.addNote(72, 0.15, 0.8)
+        success.addNote(76, 0.15, 0.9)
+        success.addNote(79, 0.3, 1.0)
+        success.play()
+        
+        // Update UI
+        Canvas.drawText(""white"", 10, 10, ""Score: "" + score)
+        Canvas.render()
+    }")
+end if
+```
+
+#### Managing Multiple Sounds
+
+```greyscript
+print("#UI{
+    // Create background music
+    bgMusic = Sound.create(""background"")
+    bgMusic.addNote(60, 0.5)
+    bgMusic.addNote(64, 0.5)
+    bgMusic.addNote(67, 0.5)
+    bgMusic.play()
+    
+    // Later, stop background music
+    if needsSilence then
+        bgMusic = Sound.get(""background"")
+        bgMusic.stop()
+    end if
+    
+    // Clean up when done
+    Sound.destroy(""background"")
+}")
+```
+
+---
+
 ## Security & Limits
 
 To keep things safe and responsive, the VM enforces several limits:
 
+- **Maximum sounds per terminal**: 100 sound instances (prevents resource exhaustion)
+- **Maximum notes per sound instance**: 1000 notes (prevents memory abuse)
+- Each terminal can have multiple independent sound instances
+- Sounds play sequentially (no polyphony)
+- Only simple sine wave synthesis (lightweight)
 - **Variables per context**: max **500** variables (prevents unbounded memory growth)
 - **Maximum string length**: max **204,800** characters (~200 KB)
 - **Maximum loop iterations per execution**: max **100,000** iterations per `Execute` call

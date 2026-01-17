@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using GreyHackTerminalUI.Canvas;
+using GreyHackTerminalUI.Sound;
 
 namespace GreyHackTerminalUI.VM
 {
@@ -132,6 +133,9 @@ namespace GreyHackTerminalUI.VM
 
             // Register Canvas object
             RegisterCanvasObject();
+            
+            // Register Sound object
+            RegisterSoundObject();
         }
 
         private void RegisterCanvasObject()
@@ -549,9 +553,160 @@ namespace GreyHackTerminalUI.VM
                     }
                 }
             }
-
+            
             // Fall back to white for unrecognized colors
             return Color.white;
+        }
+
+        private void RegisterSoundObject()
+        {
+            var sound = new IntrinsicObject("Sound");
+
+            // Sound.create(name) - creates a named sound instance
+            sound.Methods["create"] = (target, args, ctx) =>
+            {
+                if (args.Length < 1) 
+                    throw new VMException("Sound.create requires a name parameter");
+                
+                string soundName = args[0]?.ToString();
+                if (string.IsNullOrWhiteSpace(soundName))
+                    throw new VMException("Sound.create requires a non-empty name");
+                
+                if (SoundManager.Instance == null)
+                    throw new VMException("SoundManager not initialized");
+                
+                int terminalPID = ctx.GetVariable("__terminalPID") as int? ?? 0;
+                if (terminalPID == 0)
+                    throw new VMException("Terminal PID not found");
+                
+                var player = SoundManager.Instance.CreateSound(terminalPID, soundName);
+                if (player == null)
+                    throw new VMException("Cannot create sound: maximum of 100 sounds per terminal reached");
+                
+                return new SoundInstance(soundName, terminalPID);
+            };
+
+            // Sound.get(name) - retrieves a named sound instance
+            sound.Methods["get"] = (target, args, ctx) =>
+            {
+                if (args.Length < 1) 
+                    throw new VMException("Sound.get requires a name parameter");
+                
+                string soundName = args[0]?.ToString();
+                if (string.IsNullOrWhiteSpace(soundName))
+                    throw new VMException("Sound.get requires a non-empty name");
+                
+                if (SoundManager.Instance == null)
+                    throw new VMException("SoundManager not initialized");
+                
+                int terminalPID = ctx.GetVariable("__terminalPID") as int? ?? 0;
+                if (terminalPID == 0)
+                    throw new VMException("Terminal PID not found");
+                
+                var player = SoundManager.Instance.GetSound(terminalPID, soundName);
+                if (player == null)
+                    throw new VMException($"Sound '{soundName}' not found. Create it first with Sound.create()");
+                
+                return new SoundInstance(soundName, terminalPID);
+            };
+
+            // Sound.destroy(name) - destroys a named sound instance
+            sound.Methods["destroy"] = (target, args, ctx) =>
+            {
+                if (args.Length < 1) 
+                    throw new VMException("Sound.destroy requires a name parameter");
+                
+                string soundName = args[0]?.ToString();
+                if (string.IsNullOrWhiteSpace(soundName))
+                    throw new VMException("Sound.destroy requires a non-empty name");
+                
+                if (SoundManager.Instance == null)
+                    return null;
+                
+                int terminalPID = ctx.GetVariable("__terminalPID") as int? ?? 0;
+                if (terminalPID == 0)
+                    return null;
+                
+                SoundManager.Instance.DestroySound(terminalPID, soundName);
+                return null;
+            };
+
+            RegisterObject(sound);
+            RegisterSoundInstanceObject();
+        }
+
+        private void RegisterSoundInstanceObject()
+        {
+            var soundInstance = new IntrinsicObject("SoundInstance");
+
+            // instance.addNote(pitch, duration) or instance.addNote(pitch, duration, velocity)
+            soundInstance.Methods["addNote"] = (target, args, ctx) =>
+            {
+                if (!(target is SoundInstance instance))
+                    throw new VMException("Invalid sound instance");
+                
+                if (args.Length < 2) 
+                    throw new VMException("addNote requires pitch and duration parameters");
+                
+                int pitch = ToInt(args[0]);
+                float duration = (float)ToDouble(args[1]);
+                float velocity = args.Length > 2 ? (float)ToDouble(args[2]) : 0.7f;
+                
+                var player = SoundManager.Instance?.GetSound(instance.TerminalPID, instance.Name);
+                if (player == null)
+                    throw new VMException($"Sound '{instance.Name}' no longer exists");
+                
+                player.AddNote(pitch, duration, velocity);
+                return null;
+            };
+
+            // instance.clear()
+            soundInstance.Methods["clear"] = (target, args, ctx) =>
+            {
+                if (!(target is SoundInstance instance))
+                    throw new VMException("Invalid sound instance");
+                
+                var player = SoundManager.Instance?.GetSound(instance.TerminalPID, instance.Name);
+                player?.Clear();
+                return null;
+            };
+
+            // instance.play()
+            soundInstance.Methods["play"] = (target, args, ctx) =>
+            {
+                if (!(target is SoundInstance instance))
+                    throw new VMException("Invalid sound instance");
+                
+                var player = SoundManager.Instance?.GetSound(instance.TerminalPID, instance.Name);
+                if (player == null)
+                    throw new VMException($"Sound '{instance.Name}' no longer exists");
+                
+                player.Play();
+                return null;
+            };
+
+            // instance.stop()
+            soundInstance.Methods["stop"] = (target, args, ctx) =>
+            {
+                if (!(target is SoundInstance instance))
+                    throw new VMException("Invalid sound instance");
+                
+                var player = SoundManager.Instance?.GetSound(instance.TerminalPID, instance.Name);
+                player?.Stop();
+                return null;
+            };
+
+            // instance.isPlaying (getter)
+            soundInstance.Getters["isPlaying"] = (target, ctx) =>
+            {
+                if (!(target is SoundInstance instance))
+                    return false;
+                
+                var player = SoundManager.Instance?.GetSound(instance.TerminalPID, instance.Name);
+                return player?.IsPlaying ?? false;
+            };
+
+            RegisterObject(soundInstance);
         }
     }
 }

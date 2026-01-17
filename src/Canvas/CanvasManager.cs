@@ -3,6 +3,7 @@ using System.Text;
 using UnityEngine;
 using BepInEx.Logging;
 using GreyHackTerminalUI.VM;
+using GreyHackTerminalUI.Sound;
 using HarmonyLib;
 
 namespace GreyHackTerminalUI.Canvas
@@ -247,6 +248,9 @@ namespace GreyHackTerminalUI.Canvas
                     _logger?.LogDebug($"[CanvasManager] Destroyed terminal {terminalPID}");
                 }
             }
+            
+            // Also destroy all sound instances for this terminal
+            SoundManager.Instance?.DestroyAllSounds(terminalPID);
         }
 
         public void DestroyAllWindows()

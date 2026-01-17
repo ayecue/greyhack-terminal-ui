@@ -40,6 +40,7 @@ namespace GreyHackTerminalUI.Canvas
             _vm = new VirtualMachine(_intrinsics);
             _vmContext = new VMContext();
             _vmContext.SetGlobal("Canvas", "Canvas");
+            _vmContext.SetGlobal("Sound", "Sound");
         }
 
         public CanvasWindow GetOrCreateWindow(Transform parent)

@@ -25,6 +25,7 @@
   <!-- Compile VM source files directly instead of using project reference -->
   <ItemGroup>
     <Compile Include="../src/VM/**/*.cs" Exclude="../src/VM/Intrinsics.cs" />
+    <Compile Include="../src/Sound/MidiNote.cs" />
   </ItemGroup>
 
 </Project>
