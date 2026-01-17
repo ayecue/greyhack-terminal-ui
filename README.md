@@ -18,9 +18,10 @@ The canvas is rendered in a separate Unity window and driven by a lightweight sc
 - Persistent VM context per terminal (state survives across `print` calls)
 - One VM per terminal; old executions are stopped before new ones start
 - Security & abuse protection:
-  - Limits on variables, string length, loop iterations, execution time
-  - Cooldown on resizing the canvas
-  - Queue of at most 5 pending UI blocks per terminal
+    - Limits on variables, string length, loop iterations, execution time
+    - Cooldown on resizing the canvas
+
+While the initial implementation focuses on enabling rich UI via the canvas, the same scripting VM and intrinsic system can be extended to drive other client‑side features (for example, playing sounds, triggering visual effects, or exposing additional in‑game controls).
 
 ---
 
@@ -330,15 +331,14 @@ end while
 
 To keep things safe and responsive, the VM enforces several limits:
 
-- **Variables per context**: capped (prevents unbounded memory growth)
-- **Maximum string length**: large but finite (protects memory)
-- **Maximum loop iterations per execution**: prevents infinite loops
-- **Maximum execution time per block**: hard time budget per `Execute` call
-- **Maximum queued UI blocks per terminal**: 5 (newer blocks beyond that may be dropped)
+- **Variables per context**: max **500** variables (prevents unbounded memory growth)
+- **Maximum string length**: max **204,800** characters (~200 KB)
+- **Maximum loop iterations per execution**: max **100,000** iterations per `Execute` call
+- **Maximum execution time per block**: hard time budget of **1,000 ms** per `Execute` call
 
 Additionally:
 
-- `Canvas.setSize` has a **cooldown per terminal** (1 second) to prevent resize spam.
+- `Canvas.setSize` has a **cooldown per terminal** (10 seconds) to prevent resize spam.
 - Each `print("#UI{ ... }")` is executed in its own VM run; previous run can be stopped cleanly.
 
 If a script exceeds a limit, execution is aborted and an error is logged to BepInEx.
