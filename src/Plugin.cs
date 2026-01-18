@@ -36,7 +36,7 @@ namespace GreyHackTerminalUI
 
             // Initialize components
             TerminalPatches.Initialize(Logger);
-            SettingsWindowPatch.Initialize(Logger);
+            MenuInicioPatch.Initialize(Logger);
             CanvasManager.Initialize(Logger);
             SoundManager.Initialize(Logger);
             GameThemeHelper.Initialize(Logger);
