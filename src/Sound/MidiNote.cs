@@ -14,10 +14,7 @@ namespace GreyHackTerminalUI.Sound
             Duration = Math.Max(0.001f, duration);
             Velocity = Math.Clamp(velocity, 0f, 1f);
         }
-        
-        /// <summary>
-        /// Converts MIDI note number to frequency in Hz
-        /// </summary>
+
         public float GetFrequency()
         {
             // MIDI note to frequency: f = 440 * 2^((n-69)/12)

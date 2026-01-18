@@ -10,8 +10,7 @@ namespace GreyHackTerminalUI.Sound
         public static SoundManager Instance => _instance;
         
         private const int MAX_SOUNDS_PER_TERMINAL = 100;
-        
-        // Dictionary<TerminalPID, Dictionary<SoundName, SoundPlayer>>
+
         private readonly Dictionary<int, Dictionary<string, SoundPlayer>> _terminalSounds = new Dictionary<int, Dictionary<string, SoundPlayer>>();
         private readonly object _playersLock = new object();
         private ManualLogSource _logger;
