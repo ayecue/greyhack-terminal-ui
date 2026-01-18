@@ -177,6 +177,8 @@ The `examples` directory contains complete game implementations showcasing the c
 - **[snake-game](examples/snake-game)** - Classic snake game with real-time rendering and dual-terminal input system
 - **[raycast-fps](examples/raycast-fps)** - 2.5D first-person shooter with raycasting engine, enemy AI, and smooth movement controls
 
+[![Watch the video](https://img.youtube.com/vi/Mp_fOutEuBE/hqdefault.jpg)](https://www.youtube.com/watch?v=Mp_fOutEuBE)
+
 Each example includes its own README with detailed setup instructions and implementation notes.
 
 ---
