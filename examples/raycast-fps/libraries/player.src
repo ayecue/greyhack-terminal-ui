@@ -1,0 +1,166 @@
+// =============================================================================
+// Raycast FPS: Player
+// =============================================================================
+
+Player = {}
+
+// Position and orientation
+Player.x = 1.5
+Player.y = 1.5
+Player.angle = 0
+Player.radius = 0.2
+
+// Stats
+Player.health = 100
+Player.maxHealth = 100
+Player.ammo = 30
+Player.maxAmmo = 30
+Player.score = 0
+
+// Movement speeds
+Player.moveSpeed = 4.0
+Player.turnSpeed = 0.15
+Player.strafeSpeed = 3.5
+
+// Combat
+Player.shootCooldown = 0
+Player.shootDelay = 0.3
+Player.damage = 25
+Player.muzzleFlash = 0
+
+// State
+Player.isDead = false
+
+// Initialize player
+Player.init = function()
+    Player.x = Level.spawnX
+    Player.y = Level.spawnY
+    Player.angle = Level.spawnAngle
+    Player.health = Player.maxHealth
+    Player.ammo = Player.maxAmmo
+    Player.score = 0
+    Player.isDead = false
+    Player.shootCooldown = 0
+    Player.muzzleFlash = 0
+end function
+
+// Reset for new level
+Player.reset = function()
+    Player.x = Level.spawnX
+    Player.y = Level.spawnY
+    Player.angle = Level.spawnAngle
+    Player.health = Player.maxHealth
+    Player.ammo = Player.maxAmmo
+    Player.isDead = false
+    Player.shootCooldown = 0
+    Player.muzzleFlash = 0
+end function
+
+// Update player
+Player.update = function(input, deltaTime)
+    if Player.isDead then return
+    
+    // Update cooldowns
+    if Player.shootCooldown > 0 then
+        Player.shootCooldown = Player.shootCooldown - deltaTime
+    end if
+    if Player.muzzleFlash > 0 then
+        Player.muzzleFlash = Player.muzzleFlash - deltaTime
+    end if
+    
+    // Turning
+    if input.turnLeft > 0 then
+        Player.angle = Player.angle - Player.turnSpeed * input.turnLeft
+    end if
+    if input.turnRight > 0 then
+        Player.angle = Player.angle + Player.turnSpeed * input.turnRight
+    end if
+    
+    // Normalize angle
+    PI2 = 6.28318530718
+    while Player.angle < 0
+        Player.angle = Player.angle + PI2
+    end while
+    while Player.angle >= PI2
+        Player.angle = Player.angle - PI2
+    end while
+    
+    // Movement
+    moveX = 0
+    moveY = 0
+    moveMult = deltaTime * 2
+    
+    if input.forward > 0 then
+        mult = moveMult * input.forward
+        if mult > deltaTime * 3 then mult = deltaTime * 3
+        moveX = moveX + cos(Player.angle) * Player.moveSpeed * mult
+        moveY = moveY + sin(Player.angle) * Player.moveSpeed * mult
+    end if
+    if input.backward > 0 then
+        mult = moveMult * input.backward
+        if mult > deltaTime * 3 then mult = deltaTime * 3
+        moveX = moveX - cos(Player.angle) * Player.moveSpeed * mult
+        moveY = moveY - sin(Player.angle) * Player.moveSpeed * mult
+    end if
+    
+    if input.strafeLeft > 0 then
+        mult = moveMult * input.strafeLeft
+        if mult > deltaTime * 3 then mult = deltaTime * 3
+        moveX = moveX + cos(Player.angle - 1.5708) * Player.strafeSpeed * mult
+        moveY = moveY + sin(Player.angle - 1.5708) * Player.strafeSpeed * mult
+    end if
+    if input.strafeRight > 0 then
+        mult = moveMult * input.strafeRight
+        if mult > deltaTime * 3 then mult = deltaTime * 3
+        moveX = moveX + cos(Player.angle + 1.5708) * Player.strafeSpeed * mult
+        moveY = moveY + sin(Player.angle + 1.5708) * Player.strafeSpeed * mult
+    end if
+    
+    // Apply movement with collision
+    newX = Player.x + moveX
+    newY = Player.y + moveY
+    
+    if not Level.checkCollision(newX, Player.y, Player.radius) then
+        Player.x = newX
+    end if
+    if not Level.checkCollision(Player.x, newY, Player.radius) then
+        Player.y = newY
+    end if
+    
+    // Shooting
+    if input.shoot and Player.shootCooldown <= 0 and Player.ammo > 0 then
+        Player.shoot()
+    end if
+    
+    // Reload
+    if input.reload then
+        Player.ammo = Player.maxAmmo
+    end if
+end function
+
+// Shoot
+Player.shoot = function()
+    Player.ammo = Player.ammo - 1
+    Player.shootCooldown = Player.shootDelay
+    Player.muzzleFlash = 0.1
+    
+    hitEnemy = Enemies.checkHit(Player.x, Player.y, Player.angle)
+    if hitEnemy != null then
+        hitEnemy.health = hitEnemy.health - Player.damage
+        if hitEnemy.health <= 0 then
+            hitEnemy.isDead = true
+            Player.score = Player.score + 100
+        end if
+    end if
+end function
+
+// Take damage
+Player.takeDamage = function(amount)
+    if Player.isDead then return
+    
+    Player.health = Player.health - amount
+    if Player.health <= 0 then
+        Player.health = 0
+        Player.isDead = true
+    end if
+end function

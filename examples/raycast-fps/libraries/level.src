@@ -1,0 +1,163 @@
+// =============================================================================
+// Raycast FPS: Level/Map System
+// =============================================================================
+
+Level = {}
+
+// Tile types
+Level.EMPTY = 0
+Level.WALL = 1
+Level.WALL_PINK = 2
+Level.EXIT = 3
+Level.SPAWN = 4
+Level.ENEMY_SPAWN = 5
+
+// Map data
+Level.map = []
+Level.width = 0
+Level.height = 0
+Level.spawnX = 1.5
+Level.spawnY = 1.5
+Level.spawnAngle = 0
+Level.enemySpawns = []
+
+// Initialize with a map
+Level.init = function(mapData)
+    Level.map = mapData
+    Level.height = mapData.len
+    Level.width = mapData[0].len
+    Level.enemySpawns = []
+    
+    for y in range(0, Level.height - 1)
+        for x in range(0, Level.width - 1)
+            tile = Level.map[y][x]
+            if tile == Level.SPAWN then
+                Level.spawnX = x + 0.5
+                Level.spawnY = y + 0.5
+                Level.map[y][x] = Level.EMPTY
+            else if tile == Level.ENEMY_SPAWN then
+                spawn = {}
+                spawn.x = x + 0.5
+                spawn.y = y + 0.5
+                Level.enemySpawns.push(spawn)
+                Level.map[y][x] = Level.EMPTY
+            end if
+        end for
+    end for
+end function
+
+// Get tile at position
+Level.getTile = function(x, y)
+    if x < 0 or x >= Level.width then return Level.WALL
+    if y < 0 or y >= Level.height then return Level.WALL
+    return Level.map[floor(y)][floor(x)]
+end function
+
+// Check if position is solid
+Level.isSolid = function(x, y)
+    tile = Level.getTile(x, y)
+    return tile != Level.EMPTY
+end function
+
+// Check collision with radius
+Level.checkCollision = function(x, y, radius)
+    if Level.isSolid(x - radius, y - radius) then return true
+    if Level.isSolid(x + radius, y - radius) then return true
+    if Level.isSolid(x - radius, y + radius) then return true
+    if Level.isSolid(x + radius, y + radius) then return true
+    return false
+end function
+
+// Get wall color based on tile and side
+Level.getWallColor = function(tile, isNS, dist)
+    darkFactor = dist > 5
+    
+    if tile == Level.WALL then
+        if isNS then
+            if darkFactor then return Colors.WALL_NS_DARK
+            return Colors.WALL_NS
+        else
+            if darkFactor then return Colors.WALL_EW_DARK
+            return Colors.WALL_EW
+        end if
+    else if tile == Level.WALL_PINK then
+        if darkFactor then return Colors.WALL_EW_DARK
+        return Colors.WALL_EW
+    else if tile == Level.EXIT then
+        return Colors.WALL_EXIT
+    end if
+    
+    return Colors.WALL_NS
+end function
+
+// =============================================================================
+// Level Definitions
+// =============================================================================
+
+Levels = {}
+
+// Level 1
+Levels.getLevel1 = function()
+    return [
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+        [1,4,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+        [1,0,0,1,1,1,0,0,0,0,1,1,1,0,0,1],
+        [1,0,0,1,5,0,0,0,0,0,0,5,1,0,0,1],
+        [1,0,0,1,0,0,0,0,0,0,0,0,1,0,0,1],
+        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+        [1,0,0,0,0,0,0,5,0,0,0,0,0,0,0,1],
+        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+        [1,0,0,1,0,0,0,0,0,0,0,0,1,0,0,1],
+        [1,0,0,1,5,0,0,0,0,0,0,5,1,0,0,1],
+        [1,0,0,1,1,1,0,0,0,0,1,1,1,0,0,1],
+        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+    ]
+end function
+
+// Level 2
+Levels.getLevel2 = function()
+    return [
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+        [1,4,0,0,0,1,0,0,0,0,1,0,0,0,0,1],
+        [1,0,0,0,0,1,0,5,0,0,1,0,0,0,0,1],
+        [1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],
+        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+        [1,1,1,0,0,0,0,0,0,0,0,0,0,1,1,1],
+        [1,0,0,0,0,0,5,0,5,0,0,0,0,0,0,1],
+        [1,0,5,0,0,0,0,0,0,0,0,0,0,5,0,1],
+        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+        [1,1,1,0,0,0,0,0,0,0,0,0,0,1,1,1],
+        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+        [1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],
+        [1,0,0,0,0,1,0,5,0,0,1,0,0,0,0,1],
+        [1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],
+        [1,0,0,0,0,1,0,0,0,0,1,0,0,0,3,1],
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+    ]
+end function
+
+// Level 3
+Levels.getLevel3 = function()
+    return [
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+        [1,4,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+        [1,0,1,1,0,1,1,0,0,1,1,0,1,1,0,1],
+        [1,0,1,5,0,0,1,0,0,1,0,0,5,1,0,1],
+        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+        [1,0,1,0,0,0,0,5,5,0,0,0,0,1,0,1],
+        [1,0,1,0,0,1,1,1,1,1,1,0,0,1,0,1],
+        [1,0,0,0,0,1,5,0,0,5,1,0,0,0,0,1],
+        [1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],
+        [1,0,1,0,0,1,1,0,0,1,1,0,0,1,0,1],
+        [1,0,1,0,0,0,0,0,0,0,0,0,0,1,0,1],
+        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+        [1,0,1,5,0,0,1,0,0,1,0,0,5,1,0,1],
+        [1,0,1,1,0,1,1,0,0,1,1,0,1,1,0,1],
+        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+    ]
+end function

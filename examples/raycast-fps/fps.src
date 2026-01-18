@@ -1,0 +1,258 @@
+// =============================================================================
+// Raycast FPS - Main Entry Point
+// =============================================================================
+// A 2.5D raycasting first-person shooter for Grey Hack
+// Uses greyhack-terminal-canvas mod for graphics
+// =============================================================================
+// Architecture (same as snake-game):
+//   - Display mode runs the game loop (logic + rendering)
+//   - Input mode captures keys and writes to file (non-blocking)
+// =============================================================================
+// Run: fps display - Game mode (runs game loop and renders)
+// Run: fps input   - Input mode (captures keyboard input)
+// =============================================================================
+
+import_code("libraries/utils.src")
+import_code("libraries/colors.src")
+import_code("libraries/canvas.src")
+import_code("libraries/inputstate.src")
+import_code("libraries/level.src")
+import_code("libraries/player.src")
+import_code("libraries/enemies.src")
+import_code("libraries/gamestate.src")
+import_code("libraries/renderer.src")
+
+// =====================================================
+// DISPLAY MODE - Runs game loop and renders
+// =====================================================
+runDisplayMode = function()
+    print("Raycast FPS - Game Mode")
+    print("Run 'fps input' in another terminal for controls")
+    print("")
+    print("Loading...")
+    
+    // Initialize systems
+    Renderer.init()
+    wait(0.5)  // Give canvas time to initialize
+    
+    GameState.loadHighScore()
+    InputState.clear()
+    
+    // Game mode
+    gameMode = "title"  // title, playing, levelcomplete, gameover
+    tickDelay = 0.033   // ~30 FPS
+    lastTick = time
+    levelCompleteTimer = 0
+    
+    print("Ready!")
+    
+    while true
+        // Calculate delta time
+        now = time
+        deltaTime = now - lastTick
+        if deltaTime < tickDelay then
+            waitTime = tickDelay - deltaTime
+            if waitTime >= 0.01 then wait(waitTime)
+            now = time
+            deltaTime = now - lastTick
+        end if
+        lastTick = now
+        
+        // Cap delta time
+        if deltaTime > 0.1 then deltaTime = 0.1
+        
+        // Read input
+        input = InputState.read()
+        
+        if gameMode == "title" then
+            Renderer.renderTitle(GameState.highScore)
+            
+            // Any key starts game (forward is now a count, so check > 0)
+            if input.start or input.forward > 0 or input.shoot then
+                GameState.startNewGame()
+                gameMode = "playing"
+            else if input.quit then
+                print("Goodbye!")
+                exit
+            end if
+            
+        else if gameMode == "playing" then
+            // Update game
+            Player.update(input, deltaTime)
+            Enemies.update(deltaTime)
+            
+            // Check for death
+            if Player.isDead then
+                GameState.saveHighScore()
+                gameMode = "gameover"
+                InputState.clear()
+            end if
+            
+            // Check for level complete
+            if GameState.isLevelComplete() then
+                gameMode = "levelcomplete"
+                levelCompleteTimer = 0
+                InputState.clear()
+            end if
+            
+            // Quit
+            if input.quit then
+                GameState.saveHighScore()
+                print("Goodbye!")
+                exit
+            end if
+            
+            // Render
+            Renderer.render()
+            
+        else if gameMode == "levelcomplete" then
+            Renderer.renderLevelComplete(GameState.currentLevel, Player.score)
+            
+            levelCompleteTimer = levelCompleteTimer + deltaTime
+            
+            // Auto-advance after delay or on key press
+            if levelCompleteTimer > 1.0 then
+                if input.start or input.forward > 0 or input.shoot then
+                    GameState.nextLevel()
+                    gameMode = "playing"
+                    InputState.clear()
+                end if
+            end if
+            
+        else if gameMode == "gameover" then
+            isNew = GameState.isNewHighScore()
+            Renderer.renderGameOver(Player.score, GameState.highScore, isNew)
+            
+            if input.restart then
+                GameState.startNewGame()
+                gameMode = "playing"
+                InputState.clear()
+            else if input.quit then
+                print("Goodbye!")
+                exit
+            end if
+        end if
+    end while
+end function
+
+// =====================================================
+// INPUT MODE - Captures keyboard input
+// =====================================================
+runInputMode = function()
+    clear_screen
+    
+    print("===========================================")
+    print("      Raycast FPS - Input Controller")
+    print("===========================================")
+    print("")
+    print("This terminal captures your keyboard input.")
+    print("The game runs in the 'display' terminal.")
+    print("")
+    print("Controls:")
+    print("  W         - Move Forward")
+    print("  S         - Move Backward")
+    print("  A         - Strafe Left")
+    print("  D         - Strafe Right")
+    print("  Left/J    - Turn Left")
+    print("  Right/L   - Turn Right")
+    print("  Space/F   - Shoot")
+    print("  R         - Reload / Restart")
+    print("  Q         - Quit")
+    print("  Enter     - Start / Continue")
+    print("")
+    print("Press keys to control the player!")
+    print("")
+    
+    while true
+        key = user_input(">", false, true)
+        key = key.lower
+        
+        // Map keys to commands
+        command = ""
+        if key == "w" then
+            command = "forward"
+        else if key == "s" then
+            command = "backward"
+        else if key == "a" then
+            command = "strafe_left"
+        else if key == "d" then
+            command = "strafe_right"
+        else if key == "leftarrow" or key == "j" then
+            command = "turn_left"
+        else if key == "rightarrow" or key == "l" then
+            command = "turn_right"
+        else if key == "space" or key == "f" then
+            command = "shoot"
+        else if key == "r" then
+            command = "restart"
+        else if key == "return" or key == "enter" then
+            command = "start"
+        else if key == "q" then
+            command = "quit"
+            InputState.write(command)
+            print("  QUIT")
+            print("")
+            print("Goodbye!")
+            exit
+        end if
+        
+        // Write command to file
+        if command != "" then
+            InputState.write(command)
+            // Print feedback
+            if command == "forward" then print("  ^ Forward")
+            if command == "backward" then print("  v Backward")
+            if command == "strafe_left" then print("  <- Strafe Left")
+            if command == "strafe_right" then print("  -> Strafe Right")
+            if command == "turn_left" then print("  << Turn Left")
+            if command == "turn_right" then print("  >> Turn Right")
+            if command == "shoot" then print("  * SHOOT *")
+            if command == "reload" or command == "restart" then print("  RELOAD/RESTART")
+            if command == "start" then print("  START")
+        end if
+    end while
+end function
+
+// =====================================================
+// MAIN ENTRY POINT
+// =====================================================
+
+args = params
+if args == null then args = []
+
+if args.len > 0 then
+    mode = args[0].lower
+    if mode == "display" or mode == "game" then
+        runDisplayMode()
+    else if mode == "input" then
+        runInputMode()
+    else
+        print("Unknown mode: " + mode)
+        print("")
+        print("Usage: fps [display|input]")
+        print("  display - Game mode (runs game + graphics)")
+        print("  input   - Input controller (captures keys)")
+    end if
+else
+    print("===========================================")
+    print("      Raycast FPS for Grey Hack")
+    print("===========================================")
+    print("")
+    print("A 2.5D raycasting first-person shooter")
+    print("inspired by Wolfenstein 3D!")
+    print("")
+    print("Usage: fps [display|input]")
+    print("")
+    print("  display - Game mode")
+    print("           Runs the game loop + graphics")
+    print("")
+    print("  input   - Input controller")
+    print("           Captures your keyboard input")
+    print("")
+    print("How to play:")
+    print("  1. Run 'fps display' in one terminal")
+    print("  2. Run 'fps input' in another terminal")
+    print("  3. Use WASD to move, arrows/JL to turn")
+    print("  4. Space or F to shoot!")
+    print("")
+end if

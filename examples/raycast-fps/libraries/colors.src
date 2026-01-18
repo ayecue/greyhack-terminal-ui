@@ -1,0 +1,48 @@
+// =============================================================================
+// Raycast FPS: Colors
+// =============================================================================
+// Dark cyber/neon color palette
+
+Colors = {}
+
+// Background colors
+Colors.SKY_TOP = "#0a0a1a"
+Colors.SKY_BOTTOM = "#1a1a3a"
+Colors.FLOOR = "#1a1a2e"
+Colors.FLOOR_FAR = "#0d0d1a"
+
+// Wall colors (different for N/S and E/W faces)
+Colors.WALL_NS = "#4a9eff"      // North/South walls - bright blue
+Colors.WALL_NS_DARK = "#2a5e9f" // Shaded
+Colors.WALL_EW = "#ff4a9e"      // East/West walls - bright pink
+Colors.WALL_EW_DARK = "#9f2a5e" // Shaded
+
+// Special walls
+Colors.WALL_EXIT = "#4aff4a"    // Exit - green
+Colors.WALL_DOOR = "#ffaa00"    // Door - orange
+
+// Enemy colors
+Colors.ENEMY = "#ff0000"
+Colors.ENEMY_DARK = "#aa0000"
+Colors.ENEMY_EYE = "#ffff00"
+
+// UI colors
+Colors.TEXT_PRIMARY = "#ffffff"
+Colors.TEXT_SECONDARY = "#aaaaaa"
+Colors.TEXT_DANGER = "#ff4444"
+Colors.TEXT_SUCCESS = "#44ff44"
+Colors.HEALTH_BAR = "#44ff44"
+Colors.HEALTH_LOW = "#ff4444"
+Colors.AMMO_BAR = "#ffaa00"
+Colors.MINIMAP_BG = "#000000aa"
+Colors.MINIMAP_WALL = "#4a9eff"
+Colors.MINIMAP_PLAYER = "#44ff44"
+Colors.MINIMAP_ENEMY = "#ff4444"
+
+// HUD
+Colors.HUD_BG = "#000000cc"
+Colors.CROSSHAIR = "#ffffff"
+Colors.MUZZLE_FLASH = "#ffff44"
+
+// Black
+Colors.BLACK = "#000000"

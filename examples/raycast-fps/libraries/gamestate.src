@@ -1,0 +1,83 @@
+// =============================================================================
+// Raycast FPS: Game State
+// =============================================================================
+
+GameState = {}
+
+GameState.currentLevel = 1
+GameState.maxLevel = 3
+GameState.highScore = 0
+GameState.HIGH_SCORE_FILE = "/root/fps_highscore.dat"
+
+// Load high score
+GameState.loadHighScore = function()
+    computer = get_shell.host_computer
+    file = computer.File(GameState.HIGH_SCORE_FILE)
+    if file != null then
+        content = file.get_content
+        if content != null then
+            GameState.highScore = content.trim.to_int
+        end if
+    end if
+end function
+
+// Save high score
+GameState.saveHighScore = function()
+    if Player.score > GameState.highScore then
+        GameState.highScore = Player.score
+        
+        computer = get_shell.host_computer
+        file = computer.File(GameState.HIGH_SCORE_FILE)
+        if file == null then
+            computer.touch("/root", "fps_highscore.dat")
+            file = computer.File(GameState.HIGH_SCORE_FILE)
+        end if
+        if file != null then
+            file.set_content(str(GameState.highScore))
+        end if
+    end if
+end function
+
+// Check if new high score
+GameState.isNewHighScore = function()
+    return Player.score > GameState.highScore
+end function
+
+// Load level
+GameState.loadLevel = function(levelNum)
+    GameState.currentLevel = levelNum
+    
+    if levelNum == 1 then
+        Level.init(Levels.getLevel1())
+    else if levelNum == 2 then
+        Level.init(Levels.getLevel2())
+    else if levelNum == 3 then
+        Level.init(Levels.getLevel3())
+    else
+        Level.init(Levels.getLevel1())
+    end if
+    
+    Player.reset()
+    Enemies.init()
+end function
+
+// Start new game
+GameState.startNewGame = function()
+    GameState.currentLevel = 1
+    GameState.loadLevel(1)
+    Player.score = 0
+end function
+
+// Next level
+GameState.nextLevel = function()
+    GameState.currentLevel = GameState.currentLevel + 1
+    if GameState.currentLevel > GameState.maxLevel then
+        GameState.currentLevel = 1
+    end if
+    GameState.loadLevel(GameState.currentLevel)
+end function
+
+// Check for level completion
+GameState.isLevelComplete = function()
+    return Enemies.countAlive() == 0
+end function

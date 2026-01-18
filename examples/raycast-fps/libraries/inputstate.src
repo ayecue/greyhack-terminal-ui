@@ -1,0 +1,89 @@
+// =============================================================================
+// Raycast FPS: Input State
+// =============================================================================
+
+InputState = {}
+InputState.INPUT_FILE = "/root/fps_input.state"
+
+// Append input to queue
+InputState.write = function(key)
+    computer = get_shell.host_computer
+    
+    file = computer.File(InputState.INPUT_FILE)
+    if file == null then
+        computer.touch("/root", "fps_input.state")
+        file = computer.File(InputState.INPUT_FILE)
+    end if
+    
+    if file == null then return
+    
+    existing = file.get_content
+    if existing == null then existing = ""
+    existing = existing.trim
+    
+    if existing == "" then
+        file.set_content(key)
+    else
+        file.set_content(existing + ";" + key)
+    end if
+end function
+
+// Read all queued inputs and clear the file
+InputState.readAll = function()
+    computer = get_shell.host_computer
+    file = computer.File(InputState.INPUT_FILE)
+    
+    if file == null then return []
+    
+    content = file.get_content
+    if content == null then return []
+    content = content.trim
+    if content == "" then return []
+    
+    file.set_content("")
+    
+    return content.split(";")
+end function
+
+// Read and process all inputs
+InputState.read = function()
+    commands = InputState.readAll()
+    
+    result = {}
+    result.forward = 0
+    result.backward = 0
+    result.turnLeft = 0
+    result.turnRight = 0
+    result.strafeLeft = 0
+    result.strafeRight = 0
+    result.shoot = false
+    result.reload = false
+    result.start = false
+    result.restart = false
+    result.quit = false
+    
+    for cmd in commands
+        if cmd == "forward" then result.forward = result.forward + 1
+        if cmd == "backward" then result.backward = result.backward + 1
+        if cmd == "turn_left" then result.turnLeft = result.turnLeft + 1
+        if cmd == "turn_right" then result.turnRight = result.turnRight + 1
+        if cmd == "strafe_left" then result.strafeLeft = result.strafeLeft + 1
+        if cmd == "strafe_right" then result.strafeRight = result.strafeRight + 1
+        if cmd == "shoot" then result.shoot = true
+        if cmd == "reload" then result.reload = true
+        if cmd == "start" then result.start = true
+        if cmd == "restart" then result.restart = true
+        if cmd == "quit" then result.quit = true
+    end for
+    
+    return result
+end function
+
+// Clear input file
+InputState.clear = function()
+    computer = get_shell.host_computer
+    file = computer.File(InputState.INPUT_FILE)
+    if file != null then
+        file.set_content("")
+    end if
+end function

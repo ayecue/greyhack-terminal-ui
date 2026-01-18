@@ -1,0 +1,363 @@
+// =============================================================================
+// Raycast FPS: Renderer
+// =============================================================================
+
+Renderer = {}
+
+Renderer.WIDTH = 640
+Renderer.HEIGHT = 400
+Renderer.HUD_HEIGHT = 80
+Renderer.FOV = 1.0472
+Renderer.NUM_RAYS = 160
+Renderer.MAX_DEPTH = 16
+Renderer.depthBuffer = []
+
+// Initialize
+Renderer.init = function()
+    Canvas.init(Renderer.WIDTH, Renderer.HEIGHT + Renderer.HUD_HEIGHT)
+    
+    Renderer.depthBuffer = []
+    for i in range(0, Renderer.NUM_RAYS - 1)
+        Renderer.depthBuffer.push(Renderer.MAX_DEPTH)
+    end for
+end function
+
+// Render the entire scene
+Renderer.render = function()
+    Canvas.clear(Colors.BLACK)
+    Renderer.drawBackground()
+    Renderer.castRays()
+    Renderer.drawEnemies()
+    Renderer.drawWeapon()
+    Renderer.drawCrosshair()
+    Renderer.drawHUD()
+    Renderer.drawMinimap()
+    Canvas.render()
+end function
+
+// Draw sky and floor
+Renderer.drawBackground = function()
+    halfH = Renderer.HEIGHT / 2
+    Canvas.fillRect(0, 0, Renderer.WIDTH, halfH / 2, Colors.SKY_TOP)
+    Canvas.fillRect(0, halfH / 2, Renderer.WIDTH, halfH / 2, Colors.SKY_BOTTOM)
+    Canvas.fillRect(0, halfH, Renderer.WIDTH, halfH / 2, Colors.FLOOR)
+    Canvas.fillRect(0, halfH + halfH / 2, Renderer.WIDTH, halfH / 2, Colors.FLOOR_FAR)
+end function
+
+// Cast all rays and draw walls
+Renderer.castRays = function()
+    rayAngleStep = Renderer.FOV / Renderer.NUM_RAYS
+    startAngle = Player.angle - Renderer.FOV / 2
+    stripWidth = ceil(Renderer.WIDTH / Renderer.NUM_RAYS)
+    
+    for i in range(0, Renderer.NUM_RAYS - 1)
+        rayAngle = startAngle + i * rayAngleStep
+        
+        PI2 = 6.28318530718
+        while rayAngle < 0
+            rayAngle = rayAngle + PI2
+        end while
+        while rayAngle >= PI2
+            rayAngle = rayAngle - PI2
+        end while
+        
+        hit = Renderer.castRay(rayAngle)
+        Renderer.depthBuffer[i] = hit.dist
+        
+        correctedDist = hit.dist * cos(rayAngle - Player.angle)
+        if correctedDist < 0.1 then correctedDist = 0.1
+        
+        wallHeight = (Renderer.HEIGHT / correctedDist) * 0.8
+        if wallHeight > Renderer.HEIGHT then wallHeight = Renderer.HEIGHT
+        
+        wallTop = (Renderer.HEIGHT - wallHeight) / 2
+        color = Level.getWallColor(hit.tile, hit.isNS, hit.dist)
+        
+        x = i * stripWidth
+        Canvas.fillRect(x, wallTop, stripWidth + 1, wallHeight, color)
+    end for
+end function
+
+// Cast a single ray
+Renderer.castRay = function(angle)
+    dirX = cos(angle)
+    dirY = sin(angle)
+    
+    posX = Player.x
+    posY = Player.y
+    mapX = floor(posX)
+    mapY = floor(posY)
+    
+    deltaDistX = 1000000
+    deltaDistY = 1000000
+    if abs(dirX) > 0.0001 then deltaDistX = abs(1 / dirX)
+    if abs(dirY) > 0.0001 then deltaDistY = abs(1 / dirY)
+    
+    stepX = 1
+    stepY = 1
+    if dirX < 0 then stepX = -1
+    if dirY < 0 then stepY = -1
+    
+    if dirX < 0 then
+        sideDistX = (posX - mapX) * deltaDistX
+    else
+        sideDistX = (mapX + 1 - posX) * deltaDistX
+    end if
+    
+    if dirY < 0 then
+        sideDistY = (posY - mapY) * deltaDistY
+    else
+        sideDistY = (mapY + 1 - posY) * deltaDistY
+    end if
+    
+    hit = false
+    isNS = false
+    maxSteps = 64
+    steps = 0
+    
+    while not hit and steps < maxSteps
+        steps = steps + 1
+        
+        if sideDistX < sideDistY then
+            sideDistX = sideDistX + deltaDistX
+            mapX = mapX + stepX
+            isNS = false
+        else
+            sideDistY = sideDistY + deltaDistY
+            mapY = mapY + stepY
+            isNS = true
+        end if
+        
+        tile = Level.getTile(mapX, mapY)
+        if tile != Level.EMPTY then
+            hit = true
+        end if
+    end while
+    
+    if not isNS then
+        perpWallDist = sideDistX - deltaDistX
+    else
+        perpWallDist = sideDistY - deltaDistY
+    end if
+    
+    if perpWallDist < 0.1 then perpWallDist = 0.1
+    
+    result = {}
+    result.dist = perpWallDist
+    result.tile = Level.getTile(mapX, mapY)
+    result.isNS = isNS
+    result.mapX = mapX
+    result.mapY = mapY
+    
+    return result
+end function
+
+// Draw enemies as sprites
+Renderer.drawEnemies = function()
+    spriteList = []
+    
+    for e in Enemies.list
+        if e.isDead then continue
+        
+        dx = e.x - Player.x
+        dy = e.y - Player.y
+        dist = sqrt(dx * dx + dy * dy)
+        
+        if dist < 0.5 or dist > Renderer.MAX_DEPTH then continue
+        
+        entry = {}
+        entry.enemy = e
+        entry.dist = dist
+        entry.dx = dx
+        entry.dy = dy
+        spriteList.push(entry)
+    end for
+    
+    // Sort by distance (far to near)
+    for i in range(0, spriteList.len - 2)
+        for j in range(i + 1, spriteList.len - 1)
+            if spriteList[j].dist > spriteList[i].dist then
+                temp = spriteList[i]
+                spriteList[i] = spriteList[j]
+                spriteList[j] = temp
+            end if
+        end for
+    end for
+    
+    for entry in spriteList
+        Renderer.drawSprite(entry.enemy, entry.dist, entry.dx, entry.dy)
+    end for
+end function
+
+// Draw a single sprite
+Renderer.drawSprite = function(e, dist, dx, dy)
+    enemyAngle = atan(dy, dx)
+    angleDiff = enemyAngle - Player.angle
+    
+    PI = 3.14159265359
+    while angleDiff > PI
+        angleDiff = angleDiff - PI * 2
+    end while
+    while angleDiff < -PI
+        angleDiff = angleDiff + PI * 2
+    end while
+    
+    if abs(angleDiff) > Renderer.FOV / 2 + 0.3 then return
+    
+    screenX = Renderer.WIDTH / 2 + (angleDiff / Renderer.FOV) * Renderer.WIDTH
+    spriteSize = (Renderer.HEIGHT / dist) * 0.8
+    spriteTop = (Renderer.HEIGHT - spriteSize) / 2
+    
+    bufferIndex = floor(screenX / (Renderer.WIDTH / Renderer.NUM_RAYS))
+    if bufferIndex < 0 then bufferIndex = 0
+    if bufferIndex >= Renderer.NUM_RAYS then bufferIndex = Renderer.NUM_RAYS - 1
+    
+    if dist > Renderer.depthBuffer[bufferIndex] then return
+    
+    color = Colors.ENEMY
+    if dist > 5 then color = Colors.ENEMY_DARK
+    
+    bodyW = spriteSize * 0.6
+    bodyH = spriteSize * 0.8
+    bodyX = screenX - bodyW / 2
+    bodyY = spriteTop + spriteSize * 0.1
+    Canvas.fillRect(bodyX, bodyY, bodyW, bodyH, color)
+    
+    eyeSize = spriteSize * 0.1
+    eyeY = spriteTop + spriteSize * 0.2
+    Canvas.fillRect(bodyX + bodyW * 0.25, eyeY, eyeSize, eyeSize, Colors.ENEMY_EYE)
+    Canvas.fillRect(bodyX + bodyW * 0.6, eyeY, eyeSize, eyeSize, Colors.ENEMY_EYE)
+end function
+
+// Draw weapon
+Renderer.drawWeapon = function()
+    gunX = Renderer.WIDTH / 2 - 30
+    gunY = Renderer.HEIGHT - 80
+    
+    Canvas.fillRect(gunX, gunY, 60, 50, "#444444")
+    Canvas.fillRect(gunX + 10, gunY - 20, 40, 25, "#555555")
+    Canvas.fillRect(gunX + 20, gunY - 40, 20, 25, "#333333")
+    
+    if Player.muzzleFlash > 0 then
+        flashSize = 30 + rnd * 20
+        Canvas.fillCircle(gunX + 30, gunY - 50, flashSize, Colors.MUZZLE_FLASH)
+    end if
+end function
+
+// Draw crosshair
+Renderer.drawCrosshair = function()
+    cx = Renderer.WIDTH / 2
+    cy = Renderer.HEIGHT / 2
+    
+    Canvas.fillRect(cx - 10, cy - 1, 8, 2, Colors.CROSSHAIR)
+    Canvas.fillRect(cx + 2, cy - 1, 8, 2, Colors.CROSSHAIR)
+    Canvas.fillRect(cx - 1, cy - 10, 2, 8, Colors.CROSSHAIR)
+    Canvas.fillRect(cx - 1, cy + 2, 2, 8, Colors.CROSSHAIR)
+end function
+
+// Draw HUD
+Renderer.drawHUD = function()
+    hudY = Renderer.HEIGHT
+    
+    Canvas.fillRect(0, hudY, Renderer.WIDTH, Renderer.HUD_HEIGHT, Colors.HUD_BG)
+    
+    Canvas.drawText(20, hudY + 10, "HEALTH", Colors.TEXT_SECONDARY, 14)
+    healthPercent = Player.health / Player.maxHealth
+    healthColor = Colors.HEALTH_BAR
+    if healthPercent < 0.3 then healthColor = Colors.HEALTH_LOW
+    Canvas.fillRect(20, hudY + 30, 150, 20, "#333333")
+    Canvas.fillRect(20, hudY + 30, 150 * healthPercent, 20, healthColor)
+    Canvas.drawText(80, hudY + 32, str(Player.health), Colors.TEXT_PRIMARY, 16)
+    
+    Canvas.drawText(220, hudY + 10, "AMMO", Colors.TEXT_SECONDARY, 14)
+    Canvas.drawText(220, hudY + 30, str(Player.ammo) + " / " + str(Player.maxAmmo), Colors.AMMO_BAR, 20)
+    
+    Canvas.drawText(400, hudY + 10, "SCORE", Colors.TEXT_SECONDARY, 14)
+    Canvas.drawText(400, hudY + 30, str(Player.score), Colors.TEXT_PRIMARY, 20)
+    
+    alive = Enemies.countAlive()
+    Canvas.drawText(550, hudY + 10, "ENEMIES", Colors.TEXT_SECONDARY, 14)
+    Canvas.drawText(550, hudY + 30, str(alive), Colors.TEXT_DANGER, 20)
+end function
+
+// Draw minimap
+Renderer.drawMinimap = function()
+    mapSize = 100
+    mapX = Renderer.WIDTH - mapSize - 10
+    mapY = 10
+    cellSize = mapSize / Level.width
+    
+    Canvas.fillRect(mapX - 2, mapY - 2, mapSize + 4, mapSize + 4, Colors.MINIMAP_BG)
+    
+    for y in range(0, Level.height - 1)
+        for x in range(0, Level.width - 1)
+            if Level.map[y][x] != Level.EMPTY then
+                Canvas.fillRect(mapX + x * cellSize, mapY + y * cellSize, cellSize, cellSize, Colors.MINIMAP_WALL)
+            end if
+        end for
+    end for
+    
+    for e in Enemies.list
+        if not e.isDead then
+            ex = mapX + e.x * cellSize
+            ey = mapY + e.y * cellSize
+            Canvas.fillRect(ex - 2, ey - 2, 4, 4, Colors.MINIMAP_ENEMY)
+        end if
+    end for
+    
+    px = mapX + Player.x * cellSize
+    py = mapY + Player.y * cellSize
+    Canvas.fillRect(px - 2, py - 2, 4, 4, Colors.MINIMAP_PLAYER)
+    
+    dirLen = 8
+    dirX = px + cos(Player.angle) * dirLen
+    dirY = py + sin(Player.angle) * dirLen
+    Canvas.drawLine(px, py, dirX, dirY, Colors.MINIMAP_PLAYER)
+end function
+
+// Render title screen
+Renderer.renderTitle = function(highScore)
+    Canvas.clear(Colors.BLACK)
+    
+    Canvas.drawText(Renderer.WIDTH / 2 - 120, 100, "RAYCAST FPS", Colors.WALL_NS, 48)
+    Canvas.drawText(Renderer.WIDTH / 2 - 80, 200, "Press W or SPACE to start", Colors.TEXT_SECONDARY, 18)
+    Canvas.drawText(Renderer.WIDTH / 2 - 60, 300, "High Score: " + str(highScore), Colors.TEXT_PRIMARY, 20)
+    
+    Canvas.drawText(Renderer.WIDTH / 2 - 100, 380, "Controls:", Colors.TEXT_SECONDARY, 16)
+    Canvas.drawText(Renderer.WIDTH / 2 - 100, 400, "W/S - Move  A/D - Strafe", Colors.TEXT_SECONDARY, 14)
+    Canvas.drawText(Renderer.WIDTH / 2 - 100, 420, "Q/E - Turn  SPACE - Shoot", Colors.TEXT_SECONDARY, 14)
+    Canvas.drawText(Renderer.WIDTH / 2 - 100, 440, "R - Reload  ESC - Quit", Colors.TEXT_SECONDARY, 14)
+    
+    Canvas.render()
+end function
+
+// Render level complete screen
+Renderer.renderLevelComplete = function(level, score)
+    Canvas.clear(Colors.BLACK)
+    
+    Canvas.drawText(Renderer.WIDTH / 2 - 100, 150, "LEVEL " + str(level) + " COMPLETE!", Colors.WALL_EXIT, 32)
+    Canvas.drawText(Renderer.WIDTH / 2 - 60, 250, "Score: " + str(score), Colors.TEXT_PRIMARY, 24)
+    Canvas.drawText(Renderer.WIDTH / 2 - 80, 350, "Press any key to continue", Colors.TEXT_SECONDARY, 18)
+    
+    Canvas.render()
+end function
+
+// Render game over screen
+Renderer.renderGameOver = function(score, highScore, isNewHigh)
+    Canvas.clear(Colors.BLACK)
+    
+    Canvas.drawText(Renderer.WIDTH / 2 - 80, 100, "GAME OVER", Colors.TEXT_DANGER, 48)
+    
+    Canvas.drawText(Renderer.WIDTH / 2 - 60, 200, "Score: " + str(score), Colors.TEXT_PRIMARY, 24)
+    
+    if isNewHigh then
+        Canvas.drawText(Renderer.WIDTH / 2 - 80, 250, "NEW HIGH SCORE!", Colors.WALL_EXIT, 20)
+    else
+        Canvas.drawText(Renderer.WIDTH / 2 - 70, 250, "High Score: " + str(highScore), Colors.TEXT_SECONDARY, 18)
+    end if
+    
+    Canvas.drawText(Renderer.WIDTH / 2 - 80, 350, "Press R to restart", Colors.TEXT_SECONDARY, 18)
+    Canvas.drawText(Renderer.WIDTH / 2 - 80, 380, "Press ESC to quit", Colors.TEXT_SECONDARY, 18)
+    
+    Canvas.render()
+end function

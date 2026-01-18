@@ -1,0 +1,148 @@
+// =============================================================================
+// Raycast FPS: Enemies
+// =============================================================================
+
+Enemies = {}
+Enemies.list = []
+
+// Enemy class
+Enemy = {}
+Enemy.x = 0
+Enemy.y = 0
+Enemy.health = 50
+Enemy.maxHealth = 50
+Enemy.isDead = false
+Enemy.attackCooldown = 0
+Enemy.attackDelay = 1.5
+Enemy.damage = 10
+Enemy.speed = 1.5
+Enemy.sightRange = 8
+Enemy.attackRange = 6
+
+// Create new enemy
+Enemy.create = function(x, y)
+    e = new Enemy
+    e.x = x
+    e.y = y
+    e.health = 50
+    e.maxHealth = 50
+    e.isDead = false
+    e.attackCooldown = rnd * 2
+    return e
+end function
+
+// Update enemy
+Enemy.update = function(deltaTime)
+    if self.isDead then return
+    
+    if self.attackCooldown > 0 then
+        self.attackCooldown = self.attackCooldown - deltaTime
+    end if
+    
+    dx = Player.x - self.x
+    dy = Player.y - self.y
+    dist = sqrt(dx * dx + dy * dy)
+    
+    if dist < self.sightRange and dist > 1.0 then
+        nx = dx / dist
+        ny = dy / dist
+        
+        newX = self.x + nx * self.speed * deltaTime
+        newY = self.y + ny * self.speed * deltaTime
+        
+        if not Level.isSolid(newX, newY) then
+            self.x = newX
+            self.y = newY
+        else if not Level.isSolid(newX, self.y) then
+            self.x = newX
+        else if not Level.isSolid(self.x, newY) then
+            self.y = newY
+        end if
+    end if
+    
+    if dist < self.attackRange and self.attackCooldown <= 0 then
+        if Enemies.hasLineOfSight(self.x, self.y, Player.x, Player.y) then
+            Player.takeDamage(self.damage)
+            self.attackCooldown = self.attackDelay
+        end if
+    end if
+end function
+
+// Initialize enemies from level
+Enemies.init = function()
+    Enemies.list = []
+    
+    for spawn in Level.enemySpawns
+        e = Enemy.create(spawn.x, spawn.y)
+        Enemies.list.push(e)
+    end for
+end function
+
+// Update all enemies
+Enemies.update = function(deltaTime)
+    for e in Enemies.list
+        e.update(deltaTime)
+    end for
+end function
+
+// Count alive enemies
+Enemies.countAlive = function()
+    count = 0
+    for e in Enemies.list
+        if not e.isDead then count = count + 1
+    end for
+    return count
+end function
+
+// Check if shot hits an enemy
+Enemies.checkHit = function(startX, startY, angle)
+    dirX = cos(angle)
+    dirY = sin(angle)
+    
+    closestEnemy = null
+    closestDist = 100
+    
+    for e in Enemies.list
+        if e.isDead then continue
+        
+        dx = e.x - startX
+        dy = e.y - startY
+        dist = sqrt(dx * dx + dy * dy)
+        
+        if dist < closestDist and dist < 10 then
+            dotProduct = dx * dirX + dy * dirY
+            if dotProduct > 0 then
+                perpDist = abs(dx * dirY - dy * dirX)
+                if perpDist < 0.5 then
+                    if Enemies.hasLineOfSight(startX, startY, e.x, e.y) then
+                        closestDist = dist
+                        closestEnemy = e
+                    end if
+                end if
+            end if
+        end if
+    end for
+    
+    return closestEnemy
+end function
+
+// Simple line of sight check
+Enemies.hasLineOfSight = function(x1, y1, x2, y2)
+    dx = x2 - x1
+    dy = y2 - y1
+    dist = sqrt(dx * dx + dy * dy)
+    
+    steps = ceil(dist * 2)
+    if steps < 1 then steps = 1
+    
+    for i in range(0, steps - 1)
+        t = i / steps
+        checkX = x1 + dx * t
+        checkY = y1 + dy * t
+        if Level.isSolid(checkX, checkY) then
+            return false
+        end if
+    end for
+    
+    return true
+end function

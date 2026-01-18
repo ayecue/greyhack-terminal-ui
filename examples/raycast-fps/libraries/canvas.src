@@ -1,0 +1,72 @@
+// =============================================================================
+// Raycast FPS: Canvas Wrapper
+// =============================================================================
+
+Canvas = {}
+
+Canvas.TITLE = "Raycast FPS"
+Canvas._commands = []
+
+// Initialize canvas
+Canvas.init = function(w, h)
+    Canvas._commands = []
+    
+    script = ""
+    script = script + "if not hasInContext(""fpsInit"") then " + char(10)
+    script = script + "var fpsInit = true " + char(10)
+    script = script + "Canvas.setSize(" + w + ", " + h + ") " + char(10)
+    script = script + "Canvas.setTitle(""Raycast FPS"") " + char(10)
+    script = script + "Canvas.show() " + char(10)
+    script = script + "end if " + char(10)
+    
+    print("#UI{" + script + "}")
+    wait(0.2)
+end function
+
+// Clear canvas
+Canvas.clear = function(color)
+    Canvas._commands = []
+    Canvas._commands.push("Canvas.clear(""" + color + """)")
+end function
+
+// Draw filled rectangle
+Canvas.fillRect = function(x, y, w, h, color)
+    Canvas._commands.push("Canvas.fillRect(""" + color + """," + floor(x) + "," + floor(y) + "," + floor(w) + "," + floor(h) + ")")
+end function
+
+// Draw rectangle outline
+Canvas.drawRect = function(x, y, w, h, color)
+    Canvas._commands.push("Canvas.drawRect(""" + color + """," + floor(x) + "," + floor(y) + "," + floor(w) + "," + floor(h) + ")")
+end function
+
+// Draw line
+Canvas.drawLine = function(x1, y1, x2, y2, color)
+    Canvas._commands.push("Canvas.drawLine(""" + color + """," + floor(x1) + "," + floor(y1) + "," + floor(x2) + "," + floor(y2) + ")")
+end function
+
+// Draw text
+Canvas.drawText = function(x, y, text, color, size)
+    if size == null then size = 16
+    text = str(text).replace("""", "")
+    Canvas._commands.push("Canvas.drawText(""" + color + """," + floor(x) + "," + floor(y) + ",""" + text + """," + size + ")")
+end function
+
+// Draw filled circle
+Canvas.fillCircle = function(x, y, radius, color)
+    Canvas._commands.push("Canvas.fillCircle(""" + color + """," + floor(x) + "," + floor(y) + "," + floor(radius) + ")")
+end function
+
+// Render the buffer
+Canvas.render = function()
+    if Canvas._commands.len == 0 then
+        print("#UI{Canvas.render()}")
+        return
+    end if
+    
+    nl = char(10)
+    script = nl + "  " + Canvas._commands.join(nl + "  ")
+    Canvas._commands = []
+    
+    script = script + nl + "  Canvas.render()" + nl
+    print("#UI{" + script + "}")
+end function

@@ -1,0 +1,39 @@
+// =============================================================================
+// Raycast FPS: Utilities
+// =============================================================================
+
+// Random integer between min and max (inclusive)
+randInt = function(minVal, maxVal)
+    return floor(rnd * (maxVal - minVal + 1)) + minVal
+end function
+
+// Clamp value between min and max
+clamp = function(value, minVal, maxVal)
+    if value < minVal then return minVal
+    if value > maxVal then return maxVal
+    return value
+end function
+
+// Linear interpolation
+lerp = function(a, b, t)
+    return a + (b - a) * t
+end function
+
+// Distance between two points
+distance = function(x1, y1, x2, y2)
+    dx = x2 - x1
+    dy = y2 - y1
+    return sqrt(dx * dx + dy * dy)
+end function
+
+// Normalize angle to 0-2PI range
+normalizeAngle = function(angle)
+    PI2 = 6.28318530718
+    while angle < 0
+        angle = angle + PI2
+    end while
+    while angle >= PI2
+        angle = angle - PI2
+    end while
+    return angle
+end function

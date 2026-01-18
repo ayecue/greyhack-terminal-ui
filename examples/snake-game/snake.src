@@ -44,11 +44,6 @@ runDisplayMode = function()
         // Read input from file (non-blocking)
         key = InputState.read()
         
-        // Debug: show what we read
-        if key != "" then
-            print("Read key: [" + key + "]")
-        end if
-        
         if gameMode == "title" then
             // Render title screen
             SnakeRenderer.renderTitle({"highScore": GameState.highScore})
@@ -56,7 +51,6 @@ runDisplayMode = function()
             
             // Check for direction key to start
             if key == "up" or key == "down" or key == "left" or key == "right" then
-                print("Starting game with direction: " + key)
                 GameState.setDirection(key)
                 GameState.start()
                 gameMode = "playing"
@@ -155,21 +149,18 @@ runInputMode = function()
         key = user_input(">", false, true)
         key = key.lower
         
-        // Debug: show raw key
-        print("Key: [" + key + "]")
-        
         // Map keys to commands
         command = ""
-        if key == "w" or key == "UpArrow" or key == "uparrow" then
+        if key == "w" or key == "uparrow" then
             command = "up"
             print("  ^ UP")
-        else if key == "s" or key == "DownArrow" or key == "downarrow" then
+        else if key == "s" or key == "downarrow" then
             command = "down"
             print("  v DOWN")
-        else if key == "a" or key == "LeftArrow" or key == "leftarrow" then
+        else if key == "a" or key == "leftarrow" then
             command = "left"
             print("  < LEFT")
-        else if key == "d" or key == "RightArrow" or key == "rightarrow" then
+        else if key == "d" or key == "rightarrow" then
             command = "right"
             print("  > RIGHT")
         else if key == "r" then
@@ -187,7 +178,6 @@ runInputMode = function()
         // Write command to file for display mode to read
         if command != "" then
             InputState.write(command)
-            print("  -> Wrote: " + command)
         end if
     end while
 end function
