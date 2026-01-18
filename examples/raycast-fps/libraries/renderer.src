@@ -4,11 +4,11 @@
 
 Renderer = {}
 
-Renderer.WIDTH = 640
-Renderer.HEIGHT = 400
-Renderer.HUD_HEIGHT = 80
+Renderer.WIDTH = 800
+Renderer.HEIGHT = 500
+Renderer.HUD_HEIGHT = 100
 Renderer.FOV = 1.0472
-Renderer.NUM_RAYS = 160
+Renderer.NUM_RAYS = 100
 Renderer.MAX_DEPTH = 16
 Renderer.depthBuffer = []
 
