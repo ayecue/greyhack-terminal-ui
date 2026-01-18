@@ -23,6 +23,8 @@ The canvas is rendered in a separate Unity window and driven by a lightweight sc
 
 While the initial implementation focuses on enabling rich UI via the canvas, the same scripting VM and intrinsic system can be extended to drive other client‑side features (for example, playing sounds, triggering visual effects, or exposing additional in‑game controls).
 
+[![Watch the video](https://img.youtube.com/vi/sEcpcEcIYgs/hqdefault.jpg)](https://www.youtube.com/watch?v=sEcpcEcIYgs)
+
 ---
 
 ## Requirements
