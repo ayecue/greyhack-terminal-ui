@@ -152,11 +152,12 @@ GameState.update = function()
     if ateFood then
         self.score = self.score + 10
         self.spawnFood()
+        return "ate"  // Return that we ate food
     else
         self.snake.pop()
     end if
     
-    return true
+    return "moved"  // Return that we just moved
 end function
 
 // Start the game

@@ -118,9 +118,6 @@ namespace GreyHackTerminalUI.Canvas
                     if (tokens == null)
                         break;
 
-                    // Always append - never replace. This prevents sound commands
-                    // from being swallowed when new frames arrive before execution.
-                    // Scripts use Canvas.clear() to reset visual state anyway.
                     context.AccumulateTokens(tokens);
                 }
 

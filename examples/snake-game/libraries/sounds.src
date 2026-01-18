@@ -1,0 +1,138 @@
+// =============================================================================
+// Snake Game: Sound Effects & Music
+// =============================================================================
+
+Sounds = {}
+
+// Initialize all sound effects
+Sounds.init = function()
+    ui = ""
+    
+    // Eat food - satisfying crunch/pop
+    ui = ui + "var eatFood = Sound.create(""eatFood"")" + char(10)
+    ui = ui + "eatFood.clear()" + char(10)
+    ui = ui + "eatFood.addNote(72, 0.03, 0.8)" + char(10)
+    ui = ui + "eatFood.addNote(76, 0.03, 0.9)" + char(10)
+    ui = ui + "eatFood.addNote(79, 0.05, 1.0)" + char(10)
+    ui = ui + "eatFood.addNote(84, 0.08, 0.7)" + char(10)
+    
+    // Game over - sad descending tone
+    ui = ui + "var gameOver = Sound.create(""gameOver"")" + char(10)
+    ui = ui + "gameOver.clear()" + char(10)
+    ui = ui + "gameOver.addNote(60, 0.15, 0.8)" + char(10)
+    ui = ui + "gameOver.addNote(55, 0.15, 0.7)" + char(10)
+    ui = ui + "gameOver.addNote(50, 0.15, 0.6)" + char(10)
+    ui = ui + "gameOver.addNote(45, 0.25, 0.5)" + char(10)
+    ui = ui + "gameOver.addNote(40, 0.3, 0.3)" + char(10)
+    
+    // New high score - triumphant fanfare
+    ui = ui + "var highScore = Sound.create(""highScore"")" + char(10)
+    ui = ui + "highScore.clear()" + char(10)
+    ui = ui + "highScore.addNote(60, 0.1, 0.8)" + char(10)
+    ui = ui + "highScore.addNote(64, 0.1, 0.8)" + char(10)
+    ui = ui + "highScore.addNote(67, 0.1, 0.9)" + char(10)
+    ui = ui + "highScore.addNote(72, 0.15, 1.0)" + char(10)
+    ui = ui + "highScore.addNote(76, 0.1, 0.9)" + char(10)
+    ui = ui + "highScore.addNote(79, 0.1, 0.8)" + char(10)
+    ui = ui + "highScore.addNote(84, 0.25, 1.0)" + char(10)
+    
+    // Turn sound - subtle click
+    ui = ui + "var turn = Sound.create(""turn"")" + char(10)
+    ui = ui + "turn.clear()" + char(10)
+    ui = ui + "turn.addNote(90, 0.015, 0.3)" + char(10)
+    ui = ui + "turn.addNote(85, 0.015, 0.2)" + char(10)
+    
+    // Start game - ready set go
+    ui = ui + "var startGame = Sound.create(""startGame"")" + char(10)
+    ui = ui + "startGame.clear()" + char(10)
+    ui = ui + "startGame.addNote(60, 0.12, 0.7)" + char(10)
+    ui = ui + "startGame.addNote(64, 0.12, 0.8)" + char(10)
+    ui = ui + "startGame.addNote(67, 0.12, 0.9)" + char(10)
+    ui = ui + "startGame.addNote(72, 0.2, 1.0)" + char(10)
+    
+    // Background music - chill retro loop (~3 seconds)
+    ui = ui + "var bgMusic = Sound.create(""bgMusic"")" + char(10)
+    ui = ui + "bgMusic.clear()" + char(10)
+    // Bass line (C-G-Am-F style progression)
+    ui = ui + "bgMusic.addNote(36, 0.2, 0.3)" + char(10)  // C
+    ui = ui + "bgMusic.addNote(36, 0.2, 0.25)" + char(10)
+    ui = ui + "bgMusic.addNote(43, 0.2, 0.3)" + char(10)  // G
+    ui = ui + "bgMusic.addNote(43, 0.2, 0.25)" + char(10)
+    ui = ui + "bgMusic.addNote(45, 0.2, 0.3)" + char(10)  // A
+    ui = ui + "bgMusic.addNote(45, 0.2, 0.25)" + char(10)
+    ui = ui + "bgMusic.addNote(41, 0.2, 0.3)" + char(10)  // F
+    ui = ui + "bgMusic.addNote(41, 0.2, 0.25)" + char(10)
+    // Melody hints
+    ui = ui + "bgMusic.addNote(60, 0.15, 0.2)" + char(10)
+    ui = ui + "bgMusic.addNote(64, 0.15, 0.18)" + char(10)
+    ui = ui + "bgMusic.addNote(67, 0.15, 0.2)" + char(10)
+    ui = ui + "bgMusic.addNote(64, 0.15, 0.18)" + char(10)
+    // Rhythmic accent
+    ui = ui + "bgMusic.addNote(72, 0.1, 0.15)" + char(10)
+    ui = ui + "bgMusic.addNote(71, 0.1, 0.12)" + char(10)
+    ui = ui + "bgMusic.addNote(67, 0.2, 0.15)" + char(10)
+    
+    print("#UI{" + ui + "}")
+end function
+
+// Play eat food sound
+Sounds.playEatFood = function()
+    nl = char(10)
+    ui = "var s = Sound.get(""eatFood"")" + nl
+    ui = ui + "s.stop()" + nl
+    ui = ui + "s.play()" + nl
+    print("#UI{" + ui + "}")
+end function
+
+// Play game over sound
+Sounds.playGameOver = function()
+    nl = char(10)
+    ui = "var s = Sound.get(""gameOver"")" + nl
+    ui = ui + "s.stop()" + nl
+    ui = ui + "s.play()" + nl
+    print("#UI{" + ui + "}")
+end function
+
+// Play high score sound
+Sounds.playHighScore = function()
+    nl = char(10)
+    ui = "var s = Sound.get(""highScore"")" + nl
+    ui = ui + "s.stop()" + nl
+    ui = ui + "s.play()" + nl
+    print("#UI{" + ui + "}")
+end function
+
+// Play turn sound
+Sounds.playTurn = function()
+    nl = char(10)
+    ui = "var s = Sound.get(""turn"")" + nl
+    ui = ui + "s.stop()" + nl
+    ui = ui + "s.play()" + nl
+    print("#UI{" + ui + "}")
+end function
+
+// Play start game sound
+Sounds.playStartGame = function()
+    nl = char(10)
+    ui = "var s = Sound.get(""startGame"")" + nl
+    ui = ui + "s.stop()" + nl
+    ui = ui + "s.play()" + nl
+    print("#UI{" + ui + "}")
+end function
+
+// Start background music (looping)
+Sounds.startMusic = function()
+    nl = char(10)
+    ui = "var s = Sound.get(""bgMusic"")" + nl
+    ui = ui + "s.setLoop(true)" + nl
+    ui = ui + "s.play()" + nl
+    print("#UI{" + ui + "}")
+end function
+
+// Stop background music
+Sounds.stopMusic = function()
+    nl = char(10)
+    ui = "var s = Sound.get(""bgMusic"")" + nl
+    ui = ui + "s.stop()" + nl
+    print("#UI{" + ui + "}")
+end function

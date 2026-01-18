@@ -75,6 +75,29 @@ Sounds.init = function()
     ui = ui + "gameOver.addNote(48, 0.2, 0.5)" + char(10)
     ui = ui + "gameOver.addNote(45, 0.4, 0.4)" + char(10)
     
+    // Background music - dark ambient action loop (~4 seconds)
+    ui = ui + "var bgMusic = Sound.create(""bgMusic"")" + char(10)
+    ui = ui + "bgMusic.clear()" + char(10)
+    // Bass drone foundation (E1 = 28, A1 = 33)
+    ui = ui + "bgMusic.addNote(28, 0.4, 0.35)" + char(10)
+    ui = ui + "bgMusic.addNote(28, 0.4, 0.3)" + char(10)
+    ui = ui + "bgMusic.addNote(33, 0.4, 0.35)" + char(10)
+    ui = ui + "bgMusic.addNote(33, 0.4, 0.3)" + char(10)
+    // Tension notes (minor thirds and fifths)
+    ui = ui + "bgMusic.addNote(40, 0.2, 0.25)" + char(10)
+    ui = ui + "bgMusic.addNote(43, 0.2, 0.2)" + char(10)
+    ui = ui + "bgMusic.addNote(40, 0.2, 0.25)" + char(10)
+    ui = ui + "bgMusic.addNote(35, 0.2, 0.2)" + char(10)
+    // Rhythmic pulse
+    ui = ui + "bgMusic.addNote(28, 0.15, 0.4)" + char(10)
+    ui = ui + "bgMusic.addNote(28, 0.15, 0.2)" + char(10)
+    ui = ui + "bgMusic.addNote(28, 0.15, 0.4)" + char(10)
+    ui = ui + "bgMusic.addNote(28, 0.15, 0.2)" + char(10)
+    // High eerie accent
+    ui = ui + "bgMusic.addNote(64, 0.3, 0.15)" + char(10)
+    ui = ui + "bgMusic.addNote(63, 0.3, 0.12)" + char(10)
+    ui = ui + "bgMusic.addNote(60, 0.4, 0.1)" + char(10)
+    
     print("#UI{" + ui + "}")
 end function
 
@@ -140,5 +163,20 @@ Sounds.playGameOver = function()
     ui = "var s = Sound.get(""gameOver"")" + nl
     ui = ui + "s.stop()" + nl
     ui = ui + "s.play()" + nl
+    print("#UI{" + ui + "}")
+end function
+
+Sounds.startMusic = function()
+    nl = char(10)
+    ui = "var s = Sound.get(""bgMusic"")" + nl
+    ui = ui + "s.setLoop(true)" + nl
+    ui = ui + "s.play()" + nl
+    print("#UI{" + ui + "}")
+end function
+
+Sounds.stopMusic = function()
+    nl = char(10)
+    ui = "var s = Sound.get(""bgMusic"")" + nl
+    ui = ui + "s.stop()" + nl
     print("#UI{" + ui + "}")
 end function

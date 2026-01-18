@@ -72,6 +72,7 @@ runDisplayMode = function()
             // Any key starts game (forward is now a count, so check > 0)
             if input.start or input.forward > 0 or input.shoot then
                 GameState.startNewGame()
+                Sounds.startMusic()
                 gameMode = "playing"
             else if input.quit then
                 print("Goodbye!")
@@ -86,6 +87,7 @@ runDisplayMode = function()
             // Check for death
             if Player.isDead then
                 GameState.saveHighScore()
+                Sounds.stopMusic()
                 Sounds.playGameOver()
                 gameMode = "gameover"
                 InputState.clear()
@@ -129,6 +131,7 @@ runDisplayMode = function()
             
             if input.restart then
                 GameState.startNewGame()
+                Sounds.startMusic()
                 gameMode = "playing"
                 InputState.clear()
             else if input.quit then

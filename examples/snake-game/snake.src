@@ -19,6 +19,7 @@ import_code("libraries/canvas.src")
 import_code("libraries/inputstate.src")
 import_code("libraries/gamestate.src")
 import_code("libraries/renderer.src")
+import_code("libraries/sounds.src")
 
 // =====================================================
 // DISPLAY MODE - Runs game loop and renders
@@ -26,6 +27,9 @@ import_code("libraries/renderer.src")
 runDisplayMode = function()
     // Initialize canvas
     Canvas.init(640, 480)
+    
+    // Initialize sounds
+    Sounds.init()
     
     print("Snake - Game Mode")
     print("Run 'snake input' in another terminal for controls")
@@ -53,9 +57,12 @@ runDisplayMode = function()
             if key == "up" or key == "down" or key == "left" or key == "right" then
                 GameState.setDirection(key)
                 GameState.start()
+                Sounds.playStartGame()
+                Sounds.startMusic()
                 gameMode = "playing"
                 lastTick = time
             else if key == "quit" then
+                Sounds.stopMusic()
                 print("Goodbye!")
                 exit
             end if
@@ -66,7 +73,9 @@ runDisplayMode = function()
             // Handle direction input immediately
             if key == "up" or key == "down" or key == "left" or key == "right" then
                 GameState.setDirection(key)
+                Sounds.playTurn()
             else if key == "quit" then
+                Sounds.stopMusic()
                 print("Goodbye!")
                 exit
             end if
@@ -75,8 +84,13 @@ runDisplayMode = function()
             now = time
             if now - lastTick >= tickDelay then
                 // Update game state
-                GameState.update()
+                result = GameState.update()
                 lastTick = now
+                
+                // Play eat sound if food was eaten
+                if result == "ate" then
+                    Sounds.playEatFood()
+                end if
                 
                 // Increase speed as score increases
                 speedBonus = floor(GameState.score / 50) * 0.01
@@ -86,6 +100,12 @@ runDisplayMode = function()
             
             // Check for game over
             if GameState.gameOver then
+                Sounds.stopMusic()
+                if GameState.isNewHighScore() then
+                    Sounds.playHighScore()
+                else
+                    Sounds.playGameOver()
+                end if
                 gameMode = "gameover"
                 InputState.clear()
             end if
@@ -112,6 +132,7 @@ runDisplayMode = function()
                 gameMode = "title"
                 InputState.clear()
             else if key == "quit" then
+                Sounds.stopMusic()
                 print("Goodbye!")
                 exit
             end if
