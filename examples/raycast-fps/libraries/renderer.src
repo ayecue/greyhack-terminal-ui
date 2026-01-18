@@ -25,26 +25,91 @@ end function
 // Render the entire scene
 Renderer.render = function()
     Canvas.clear(Colors.BLACK)
-    Renderer.drawBackground()
+    Renderer.drawSky()
+    Renderer.drawFloor()
     Renderer.castRays()
     Renderer.drawEnemies()
     Renderer.drawWeapon()
     Renderer.drawCrosshair()
+    Renderer.drawDamageOverlay()
     Renderer.drawHUD()
     Renderer.drawMinimap()
     Canvas.render()
 end function
 
-// Draw sky and floor
-Renderer.drawBackground = function()
+// Draw gradient sky
+Renderer.drawSky = function()
     halfH = Renderer.HEIGHT / 2
-    Canvas.fillRect(0, 0, Renderer.WIDTH, halfH / 2, Colors.SKY_TOP)
-    Canvas.fillRect(0, halfH / 2, Renderer.WIDTH, halfH / 2, Colors.SKY_BOTTOM)
-    Canvas.fillRect(0, halfH, Renderer.WIDTH, halfH / 2, Colors.FLOOR)
-    Canvas.fillRect(0, halfH + halfH / 2, Renderer.WIDTH, halfH / 2, Colors.FLOOR_FAR)
+    numBands = 8
+    bandHeight = halfH / numBands
+    
+    for i in range(0, numBands - 1)
+        // Interpolate from dark blue to lighter blue
+        darkness = 1.0 - (i / numBands) * 0.6
+        r = floor(10 * darkness)
+        g = floor(15 * darkness)
+        b = floor(40 + 20 * (i / numBands))
+        color = "#" + Renderer.toHex(r) + Renderer.toHex(g) + Renderer.toHex(b)
+        Canvas.fillRect(0, i * bandHeight, Renderer.WIDTH, bandHeight + 1, color)
+    end for
 end function
 
-// Cast all rays and draw walls
+// Draw floor with distance shading
+Renderer.drawFloor = function()
+    halfH = Renderer.HEIGHT / 2
+    numBands = 12
+    bandHeight = halfH / numBands
+    
+    for i in range(0, numBands - 1)
+        // Darker further away (top of floor section)
+        brightness = 0.3 + (i / numBands) * 0.4
+        r = floor(30 * brightness)
+        g = floor(25 * brightness)
+        b = floor(40 * brightness)
+        color = "#" + Renderer.toHex(r) + Renderer.toHex(g) + Renderer.toHex(b)
+        Canvas.fillRect(0, halfH + i * bandHeight, Renderer.WIDTH, bandHeight + 1, color)
+    end for
+end function
+
+// Helper: convert number to 2-digit hex
+Renderer.toHex = function(n)
+    if n < 0 then n = 0
+    if n > 255 then n = 255
+    n = floor(n)
+    hex = "0123456789abcdef"
+    return hex[floor(n / 16)] + hex[n % 16]
+end function
+
+// Interpolate between two colors based on distance
+Renderer.shadeColor = function(baseColor, dist, maxDist)
+    // Parse hex color
+    r = Renderer.hexToInt(baseColor[1:3])
+    g = Renderer.hexToInt(baseColor[3:5])
+    b = Renderer.hexToInt(baseColor[5:7])
+    
+    // Calculate shade factor (closer = brighter)
+    factor = 1.0 - (dist / maxDist) * 0.7
+    if factor < 0.3 then factor = 0.3
+    
+    r = floor(r * factor)
+    g = floor(g * factor)
+    b = floor(b * factor)
+    
+    return "#" + Renderer.toHex(r) + Renderer.toHex(g) + Renderer.toHex(b)
+end function
+
+// Helper: hex string to int
+Renderer.hexToInt = function(hex)
+    hex = hex.lower
+    chars = "0123456789abcdef"
+    result = 0
+    for c in hex
+        result = result * 16 + chars.indexOf(c)
+    end for
+    return result
+end function
+
+// Cast all rays and draw walls with detailed shading
 Renderer.castRays = function()
     rayAngleStep = Renderer.FOV / Renderer.NUM_RAYS
     startAngle = Player.angle - Renderer.FOV / 2
@@ -71,10 +136,31 @@ Renderer.castRays = function()
         if wallHeight > Renderer.HEIGHT then wallHeight = Renderer.HEIGHT
         
         wallTop = (Renderer.HEIGHT - wallHeight) / 2
-        color = Level.getWallColor(hit.tile, hit.isNS, hit.dist)
+        
+        // Get base color and shade by distance
+        baseColor = Level.getWallColor(hit.tile, hit.isNS, 0)
+        color = Renderer.shadeColor(baseColor, correctedDist, Renderer.MAX_DEPTH)
         
         x = i * stripWidth
+        
+        // Draw main wall strip
         Canvas.fillRect(x, wallTop, stripWidth + 1, wallHeight, color)
+        
+        // Add vertical texture lines for detail (every 4th strip)
+        if (i % 4) == 0 and wallHeight > 20 then
+            darkerColor = Renderer.shadeColor(baseColor, correctedDist + 2, Renderer.MAX_DEPTH)
+            Canvas.fillRect(x, wallTop, 1, wallHeight, darkerColor)
+        end if
+        
+        // Add horizontal brick lines for close walls
+        if correctedDist < 3 and wallHeight > 40 then
+            brickSpacing = wallHeight / 4
+            lineColor = Renderer.shadeColor("#222222", correctedDist, Renderer.MAX_DEPTH)
+            for b in range(1, 3)
+                lineY = wallTop + b * brickSpacing
+                Canvas.fillRect(x, lineY, stripWidth + 1, 1, lineColor)
+            end for
+        end if
     end for
 end function
 
@@ -173,23 +259,25 @@ Renderer.drawEnemies = function()
         spriteList.push(entry)
     end for
     
-    // Sort by distance (far to near)
-    for i in range(0, spriteList.len - 2)
-        for j in range(i + 1, spriteList.len - 1)
-            if spriteList[j].dist > spriteList[i].dist then
-                temp = spriteList[i]
-                spriteList[i] = spriteList[j]
-                spriteList[j] = temp
-            end if
+    // Sort by distance (far to near) - only if we have 2+ sprites
+    if spriteList.len >= 2 then
+        for i in range(0, spriteList.len - 2)
+            for j in range(i + 1, spriteList.len - 1)
+                if spriteList[j].dist > spriteList[i].dist then
+                    temp = spriteList[i]
+                    spriteList[i] = spriteList[j]
+                    spriteList[j] = temp
+                end if
+            end for
         end for
-    end for
+    end if
     
     for entry in spriteList
         Renderer.drawSprite(entry.enemy, entry.dist, entry.dx, entry.dy)
     end for
 end function
 
-// Draw a single sprite
+// Draw a single sprite with detailed enemy
 Renderer.drawSprite = function(e, dist, dx, dy)
     enemyAngle = atan(dy, dx)
     angleDiff = enemyAngle - Player.angle
@@ -214,150 +302,485 @@ Renderer.drawSprite = function(e, dist, dx, dy)
     
     if dist > Renderer.depthBuffer[bufferIndex] then return
     
-    color = Colors.ENEMY
-    if dist > 5 then color = Colors.ENEMY_DARK
+    // Shade enemy color by distance
+    baseColor = "#cc3333"
+    shadedColor = Renderer.shadeColor(baseColor, dist, Renderer.MAX_DEPTH)
+    darkColor = Renderer.shadeColor("#881111", dist, Renderer.MAX_DEPTH)
     
     bodyW = spriteSize * 0.6
     bodyH = spriteSize * 0.8
     bodyX = screenX - bodyW / 2
     bodyY = spriteTop + spriteSize * 0.1
-    Canvas.fillRect(bodyX, bodyY, bodyW, bodyH, color)
     
-    eyeSize = spriteSize * 0.1
-    eyeY = spriteTop + spriteSize * 0.2
-    Canvas.fillRect(bodyX + bodyW * 0.25, eyeY, eyeSize, eyeSize, Colors.ENEMY_EYE)
-    Canvas.fillRect(bodyX + bodyW * 0.6, eyeY, eyeSize, eyeSize, Colors.ENEMY_EYE)
-end function
-
-// Draw weapon
-Renderer.drawWeapon = function()
-    gunX = Renderer.WIDTH / 2 - 30
-    gunY = Renderer.HEIGHT - 80
+    // Shadow/outline
+    Canvas.fillRect(bodyX + 2, bodyY + 2, bodyW, bodyH, "#000000")
     
-    Canvas.fillRect(gunX, gunY, 60, 50, "#444444")
-    Canvas.fillRect(gunX + 10, gunY - 20, 40, 25, "#555555")
-    Canvas.fillRect(gunX + 20, gunY - 40, 20, 25, "#333333")
+    // Main body
+    Canvas.fillRect(bodyX, bodyY, bodyW, bodyH, shadedColor)
     
-    if Player.muzzleFlash > 0 then
-        flashSize = 30 + rnd * 20
-        Canvas.fillCircle(gunX + 30, gunY - 50, flashSize, Colors.MUZZLE_FLASH)
+    // Body shading (darker side)
+    Canvas.fillRect(bodyX + bodyW * 0.7, bodyY, bodyW * 0.3, bodyH, darkColor)
+    
+    // Head (slightly lighter)
+    headW = bodyW * 0.7
+    headH = spriteSize * 0.25
+    headX = bodyX + (bodyW - headW) / 2
+    headY = bodyY - headH * 0.3
+    Canvas.fillRect(headX, headY, headW, headH, shadedColor)
+    
+    // Eyes (glowing effect)
+    eyeSize = spriteSize * 0.08
+    if eyeSize < 2 then eyeSize = 2
+    eyeY = headY + headH * 0.3
+    eyeGlow = "#ffff00"
+    eyePupil = "#ff0000"
+    
+    // Left eye glow + pupil
+    Canvas.fillRect(headX + headW * 0.2 - eyeSize/2, eyeY - eyeSize/2, eyeSize * 1.5, eyeSize * 1.5, eyeGlow)
+    Canvas.fillRect(headX + headW * 0.2, eyeY, eyeSize, eyeSize, eyePupil)
+    
+    // Right eye glow + pupil  
+    Canvas.fillRect(headX + headW * 0.65 - eyeSize/2, eyeY - eyeSize/2, eyeSize * 1.5, eyeSize * 1.5, eyeGlow)
+    Canvas.fillRect(headX + headW * 0.65, eyeY, eyeSize, eyeSize, eyePupil)
+    
+    // Arms (if big enough)
+    if spriteSize > 50 then
+        armW = bodyW * 0.2
+        armH = bodyH * 0.5
+        // Left arm
+        Canvas.fillRect(bodyX - armW, bodyY + bodyH * 0.2, armW, armH, darkColor)
+        // Right arm
+        Canvas.fillRect(bodyX + bodyW, bodyY + bodyH * 0.2, armW, armH, darkColor)
+    end if
+    
+    // Health indicator (if damaged)
+    if e.health < e.maxHealth then
+        healthPercent = e.health / e.maxHealth
+        barW = bodyW * 0.8
+        barH = 4
+        barX = bodyX + (bodyW - barW) / 2
+        barY = bodyY - 10
+        Canvas.fillRect(barX, barY, barW, barH, "#333333")
+        Canvas.fillRect(barX, barY, barW * healthPercent, barH, "#00ff00")
     end if
 end function
 
-// Draw crosshair
+// Draw weapon with detail
+Renderer.drawWeapon = function()
+    gunX = Renderer.WIDTH / 2 - 40
+    gunY = Renderer.HEIGHT - 100
+    
+    // Bob effect based on movement
+    bobAmount = 0
+    if Player.isMoving then
+        bobAmount = sin(time * 10) * 3
+    end if
+    gunY = gunY + bobAmount
+    
+    // Gun shadow
+    Canvas.fillRect(gunX + 4, gunY + 4, 80, 70, "#111111")
+    
+    // Main grip (handle)
+    Canvas.fillRect(gunX + 25, gunY + 40, 30, 40, "#3a3a3a")
+    Canvas.fillRect(gunX + 30, gunY + 45, 20, 30, "#2a2a2a")  // Grip texture
+    
+    // Trigger guard
+    Canvas.fillRect(gunX + 20, gunY + 35, 40, 8, "#444444")
+    
+    // Main body/receiver
+    Canvas.fillRect(gunX + 10, gunY + 10, 60, 30, "#555555")
+    Canvas.fillRect(gunX + 15, gunY + 15, 50, 20, "#4a4a4a")  // Body detail
+    
+    // Barrel
+    Canvas.fillRect(gunX + 25, gunY - 25, 30, 40, "#444444")
+    Canvas.fillRect(gunX + 30, gunY - 35, 20, 15, "#333333")  // Muzzle
+    Canvas.fillRect(gunX + 33, gunY - 40, 14, 8, "#222222")   // Barrel tip
+    
+    // Sight
+    Canvas.fillRect(gunX + 35, gunY + 5, 10, 8, "#666666")
+    Canvas.fillRect(gunX + 38, gunY + 2, 4, 5, "#00ff00")  // Glowing sight
+    
+    // Slide/top
+    Canvas.fillRect(gunX + 15, gunY + 8, 50, 5, "#666666")
+    
+    // Muzzle flash (multiple layers for glow effect)
+    if Player.muzzleFlash > 0 then
+        flashX = gunX + 40
+        flashY = gunY - 50
+        // Outer glow
+        Canvas.fillCircle(flashX, flashY, 45, "#ff8800")
+        // Middle
+        Canvas.fillCircle(flashX, flashY, 30, "#ffcc00")
+        // Inner bright
+        Canvas.fillCircle(flashX, flashY, 15, "#ffffff")
+        // Sparks
+        Canvas.fillRect(flashX - 40, flashY - 5, 20, 3, "#ffff00")
+        Canvas.fillRect(flashX + 20, flashY - 5, 20, 3, "#ffff00")
+        Canvas.fillRect(flashX - 5, flashY - 40, 3, 20, "#ffff00")
+    end if
+end function
+
+// Draw crosshair with dynamic size based on accuracy
 Renderer.drawCrosshair = function()
     cx = Renderer.WIDTH / 2
     cy = Renderer.HEIGHT / 2
     
-    Canvas.fillRect(cx - 10, cy - 1, 8, 2, Colors.CROSSHAIR)
-    Canvas.fillRect(cx + 2, cy - 1, 8, 2, Colors.CROSSHAIR)
-    Canvas.fillRect(cx - 1, cy - 10, 2, 8, Colors.CROSSHAIR)
-    Canvas.fillRect(cx - 1, cy + 2, 2, 8, Colors.CROSSHAIR)
+    // Crosshair expands slightly when moving
+    spread = 10
+    if Player.isMoving then
+        spread = 14
+    end if
+    
+    // Main crosshair lines
+    Canvas.fillRect(cx - spread - 6, cy - 1, 8, 2, Colors.CROSSHAIR)
+    Canvas.fillRect(cx + spread - 2, cy - 1, 8, 2, Colors.CROSSHAIR)
+    Canvas.fillRect(cx - 1, cy - spread - 6, 2, 8, Colors.CROSSHAIR)
+    Canvas.fillRect(cx - 1, cy + spread - 2, 2, 8, Colors.CROSSHAIR)
+    
+    // Center dot
+    Canvas.fillRect(cx - 1, cy - 1, 2, 2, "#ffffff")
 end function
 
-// Draw HUD
+// Draw damage overlay (red vignette when hurt)
+Renderer.drawDamageOverlay = function()
+    if Player.damageFlash <= 0 then return
+    
+    // Calculate alpha based on flash remaining
+    intensity = Player.damageFlash / 10
+    if intensity > 1 then intensity = 1
+    
+    // Red overlay on screen edges
+    edgeSize = 40 * intensity
+    
+    // Top edge
+    for i in range(0, floor(edgeSize))
+        alpha = (edgeSize - i) / edgeSize * 0.5
+        r = floor(255 * alpha)
+        color = "#" + Renderer.toHex(r) + "0000"
+        Canvas.fillRect(0, i, Renderer.WIDTH, 1, color)
+    end for
+    
+    // Bottom edge
+    for i in range(0, floor(edgeSize))
+        alpha = (edgeSize - i) / edgeSize * 0.5
+        r = floor(255 * alpha)
+        color = "#" + Renderer.toHex(r) + "0000"
+        Canvas.fillRect(0, Renderer.HEIGHT - i, Renderer.WIDTH, 1, color)
+    end for
+    
+    // Left edge
+    for i in range(0, floor(edgeSize))
+        alpha = (edgeSize - i) / edgeSize * 0.4
+        r = floor(255 * alpha)
+        color = "#" + Renderer.toHex(r) + "0000"
+        Canvas.fillRect(i, 0, 1, Renderer.HEIGHT, color)
+    end for
+    
+    // Right edge
+    for i in range(0, floor(edgeSize))
+        alpha = (edgeSize - i) / edgeSize * 0.4
+        r = floor(255 * alpha)
+        color = "#" + Renderer.toHex(r) + "0000"
+        Canvas.fillRect(Renderer.WIDTH - i, 0, 1, Renderer.HEIGHT, color)
+    end for
+end function
+
+// Draw HUD with enhanced visuals
 Renderer.drawHUD = function()
     hudY = Renderer.HEIGHT
     
-    Canvas.fillRect(0, hudY, Renderer.WIDTH, Renderer.HUD_HEIGHT, Colors.HUD_BG)
+    // HUD background with gradient effect
+    Canvas.fillRect(0, hudY, Renderer.WIDTH, Renderer.HUD_HEIGHT, "#1a1a2e")
+    Canvas.fillRect(0, hudY, Renderer.WIDTH, 3, "#3a3a5e")  // Top border highlight
+    Canvas.fillRect(0, hudY + 3, Renderer.WIDTH, 1, "#0a0a1e")  // Shadow line
     
-    Canvas.drawText(20, hudY + 10, "HEALTH", Colors.TEXT_SECONDARY, 14)
+    // HEALTH SECTION
+    // Health icon (red cross)
+    Canvas.fillRect(25, hudY + 15, 16, 4, "#ff4444")
+    Canvas.fillRect(31, hudY + 9, 4, 16, "#ff4444")
+    
+    Canvas.drawText(50, hudY + 12, "HEALTH", "#888899", 12)
+    
     healthPercent = Player.health / Player.maxHealth
-    healthColor = Colors.HEALTH_BAR
-    if healthPercent < 0.3 then healthColor = Colors.HEALTH_LOW
-    Canvas.fillRect(20, hudY + 30, 150, 20, "#333333")
-    Canvas.fillRect(20, hudY + 30, 150 * healthPercent, 20, healthColor)
-    Canvas.drawText(80, hudY + 32, str(Player.health), Colors.TEXT_PRIMARY, 16)
     
-    Canvas.drawText(220, hudY + 10, "AMMO", Colors.TEXT_SECONDARY, 14)
-    Canvas.drawText(220, hudY + 30, str(Player.ammo) + " / " + str(Player.maxAmmo), Colors.AMMO_BAR, 20)
+    // Health bar background with border
+    Canvas.fillRect(48, hudY + 32, 154, 24, "#0a0a15")  // Shadow
+    Canvas.fillRect(50, hudY + 30, 150, 20, "#222233")  // Background
     
-    Canvas.drawText(400, hudY + 10, "SCORE", Colors.TEXT_SECONDARY, 14)
-    Canvas.drawText(400, hudY + 30, str(Player.score), Colors.TEXT_PRIMARY, 20)
+    // Segmented health bar for more detail
+    healthWidth = floor(150 * healthPercent)
+    if healthPercent > 0.6 then
+        healthColor = "#22cc44"
+        healthHighlight = "#44ff66"
+    else if healthPercent > 0.3 then
+        healthColor = "#ccaa22"
+        healthHighlight = "#ffdd44"
+    else
+        healthColor = "#cc2222"
+        healthHighlight = "#ff4444"
+    end if
     
+    Canvas.fillRect(50, hudY + 30, healthWidth, 20, healthColor)
+    Canvas.fillRect(50, hudY + 30, healthWidth, 6, healthHighlight)  // Top highlight
+    
+    // Health segments
+    for s in range(1, 4)
+        Canvas.fillRect(50 + s * 30, hudY + 30, 2, 20, "#111122")
+    end for
+    
+    Canvas.drawText(110, hudY + 33, str(Player.health), "#ffffff", 14)
+    
+    // AMMO SECTION
+    // Ammo icon (bullet shape)
+    Canvas.fillRect(225, hudY + 12, 6, 16, "#ffcc00")
+    Canvas.fillRect(223, hudY + 10, 10, 4, "#ffaa00")
+    
+    Canvas.drawText(240, hudY + 12, "AMMO", "#888899", 12)
+    
+    // Ammo display
+    ammoPercent = Player.ammo / Player.maxAmmo
+    ammoColor = "#ffcc00"
+    if ammoPercent < 0.3 then ammoColor = "#ff6600"
+    if Player.ammo == 0 then ammoColor = "#ff0000"
+    
+    Canvas.drawText(240, hudY + 35, str(Player.ammo), ammoColor, 24)
+    Canvas.drawText(280, hudY + 40, "/" + str(Player.maxAmmo), "#666677", 14)
+    
+    // Ammo bar mini
+    Canvas.fillRect(240, hudY + 58, 80, 6, "#222233")
+    Canvas.fillRect(240, hudY + 58, floor(80 * ammoPercent), 6, ammoColor)
+    
+    // SCORE SECTION
+    // Score icon (star)
+    Canvas.fillRect(390, hudY + 14, 10, 10, "#ffdd00")
+    Canvas.fillRect(393, hudY + 11, 4, 16, "#ffdd00")
+    Canvas.fillRect(387, hudY + 17, 16, 4, "#ffdd00")
+    
+    Canvas.drawText(410, hudY + 12, "SCORE", "#888899", 12)
+    Canvas.drawText(410, hudY + 35, str(Player.score), "#ffffff", 24)
+    
+    // LEVEL SECTION
+    Canvas.drawText(520, hudY + 12, "LEVEL", "#888899", 12)
+    Canvas.drawText(520, hudY + 35, str(GameState.currentLevel), "#44aaff", 24)
+    
+    // ENEMIES SECTION
     alive = Enemies.countAlive()
-    Canvas.drawText(550, hudY + 10, "ENEMIES", Colors.TEXT_SECONDARY, 14)
-    Canvas.drawText(550, hudY + 30, str(alive), Colors.TEXT_DANGER, 20)
+    
+    // Enemy icon (skull-ish)
+    Canvas.fillRect(595, hudY + 12, 12, 12, "#ff4444")
+    Canvas.fillRect(597, hudY + 16, 3, 3, "#000000")
+    Canvas.fillRect(604, hudY + 16, 3, 3, "#000000")
+    
+    Canvas.drawText(615, hudY + 12, "ENEMIES", "#888899", 12)
+    
+    enemyColor = "#ff4444"
+    if alive == 0 then enemyColor = "#44ff44"
+    Canvas.drawText(615, hudY + 35, str(alive), enemyColor, 24)
 end function
 
-// Draw minimap
+// Draw minimap with enhanced visuals
 Renderer.drawMinimap = function()
     mapSize = 100
     mapX = Renderer.WIDTH - mapSize - 10
     mapY = 10
     cellSize = mapSize / Level.width
     
-    Canvas.fillRect(mapX - 2, mapY - 2, mapSize + 4, mapSize + 4, Colors.MINIMAP_BG)
+    // Minimap border and background
+    Canvas.fillRect(mapX - 4, mapY - 4, mapSize + 8, mapSize + 8, "#333344")
+    Canvas.fillRect(mapX - 2, mapY - 2, mapSize + 4, mapSize + 4, "#1a1a2e")
     
+    // Draw walls with color based on type
     for y in range(0, Level.height - 1)
         for x in range(0, Level.width - 1)
-            if Level.map[y][x] != Level.EMPTY then
-                Canvas.fillRect(mapX + x * cellSize, mapY + y * cellSize, cellSize, cellSize, Colors.MINIMAP_WALL)
+            tile = Level.map[y][x]
+            if tile != Level.EMPTY then
+                tileColor = "#446688"  // Default wall
+                if tile == Level.EXIT then
+                    tileColor = "#44ff88"  // Exit - green
+                else if tile == Level.WALL_PINK then
+                    tileColor = "#884466"  // Pink wall
+                end if
+                Canvas.fillRect(mapX + x * cellSize, mapY + y * cellSize, cellSize, cellSize, tileColor)
             end if
         end for
     end for
     
+    // Draw enemy dots with glow effect
     for e in Enemies.list
         if not e.isDead then
             ex = mapX + e.x * cellSize
             ey = mapY + e.y * cellSize
-            Canvas.fillRect(ex - 2, ey - 2, 4, 4, Colors.MINIMAP_ENEMY)
+            // Glow
+            Canvas.fillRect(ex - 3, ey - 3, 6, 6, "#ff000044")
+            // Dot
+            Canvas.fillRect(ex - 2, ey - 2, 4, 4, "#ff4444")
         end if
     end for
     
+    // Draw player with FOV cone
     px = mapX + Player.x * cellSize
     py = mapY + Player.y * cellSize
-    Canvas.fillRect(px - 2, py - 2, 4, 4, Colors.MINIMAP_PLAYER)
     
-    dirLen = 8
+    // FOV cone (simple triangle approximation)
+    coneLen = 15
+    halfFov = Renderer.FOV / 2
+    leftDirX = px + cos(Player.angle - halfFov) * coneLen
+    leftDirY = py + sin(Player.angle - halfFov) * coneLen
+    rightDirX = px + cos(Player.angle + halfFov) * coneLen
+    rightDirY = py + sin(Player.angle + halfFov) * coneLen
+    Canvas.drawLine(px, py, leftDirX, leftDirY, "#44ff4444")
+    Canvas.drawLine(px, py, rightDirX, rightDirY, "#44ff4444")
+    Canvas.drawLine(leftDirX, leftDirY, rightDirX, rightDirY, "#44ff4444")
+    
+    // Player dot with glow
+    Canvas.fillRect(px - 4, py - 4, 8, 8, "#00ff0044")
+    Canvas.fillRect(px - 2, py - 2, 4, 4, "#44ff44")
+    
+    // Direction indicator
+    dirLen = 10
     dirX = px + cos(Player.angle) * dirLen
     dirY = py + sin(Player.angle) * dirLen
-    Canvas.drawLine(px, py, dirX, dirY, Colors.MINIMAP_PLAYER)
+    Canvas.drawLine(px, py, dirX, dirY, "#ffffff")
 end function
 
-// Render title screen
+// Render title screen with style
 Renderer.renderTitle = function(highScore)
-    Canvas.clear(Colors.BLACK)
+    Canvas.clear("#0a0a15")
     
-    Canvas.drawText(Renderer.WIDTH / 2 - 120, 100, "RAYCAST FPS", Colors.WALL_NS, 48)
-    Canvas.drawText(Renderer.WIDTH / 2 - 80, 200, "Press W or SPACE to start", Colors.TEXT_SECONDARY, 18)
-    Canvas.drawText(Renderer.WIDTH / 2 - 60, 300, "High Score: " + str(highScore), Colors.TEXT_PRIMARY, 20)
+    // Background grid effect
+    for y in range(0, 12)
+        lineY = y * 40
+        alpha = 0.1 + (y / 24)
+        gray = floor(30 * alpha)
+        color = "#" + Renderer.toHex(gray) + Renderer.toHex(gray) + Renderer.toHex(gray + 20)
+        Canvas.fillRect(0, lineY, Renderer.WIDTH, 1, color)
+    end for
     
-    Canvas.drawText(Renderer.WIDTH / 2 - 100, 380, "Controls:", Colors.TEXT_SECONDARY, 16)
-    Canvas.drawText(Renderer.WIDTH / 2 - 100, 400, "W/S - Move  A/D - Strafe", Colors.TEXT_SECONDARY, 14)
-    Canvas.drawText(Renderer.WIDTH / 2 - 100, 420, "Q/E - Turn  SPACE - Shoot", Colors.TEXT_SECONDARY, 14)
-    Canvas.drawText(Renderer.WIDTH / 2 - 100, 440, "R - Reload  ESC - Quit", Colors.TEXT_SECONDARY, 14)
+    for x in range(0, 16)
+        lineX = x * 40
+        Canvas.fillRect(lineX, 0, 1, Renderer.HEIGHT + Renderer.HUD_HEIGHT, "#151525")
+    end for
+    
+    // Title shadow
+    Canvas.drawText(Renderer.WIDTH / 2 - 147, 83, "RAYCAST FPS", "#000000", 48)
+    
+    // Title with glow layers
+    Canvas.drawText(Renderer.WIDTH / 2 - 145, 80, "RAYCAST FPS", "#ff2200", 48)
+    Canvas.drawText(Renderer.WIDTH / 2 - 144, 81, "RAYCAST FPS", "#ff4400", 48)
+    
+    // Subtitle
+    Canvas.drawText(Renderer.WIDTH / 2 - 70, 140, "TERMINAL EDITION", "#666688", 16)
+    
+    // Decorative line
+    Canvas.fillRect(Renderer.WIDTH / 2 - 100, 165, 200, 2, "#ff440044")
+    Canvas.fillRect(Renderer.WIDTH / 2 - 80, 168, 160, 1, "#ff220022")
+    
+    // Start prompt (pulsing would need animation)
+    Canvas.fillRect(Renderer.WIDTH / 2 - 120, 210, 240, 40, "#222233")
+    Canvas.fillRect(Renderer.WIDTH / 2 - 118, 212, 236, 36, "#1a1a2e")
+    Canvas.drawText(Renderer.WIDTH / 2 - 90, 220, "Press W or SPACE to start", "#88ff88", 16)
+    
+    // High score box
+    Canvas.fillRect(Renderer.WIDTH / 2 - 80, 280, 160, 50, "#222233")
+    Canvas.fillRect(Renderer.WIDTH / 2 - 78, 282, 156, 46, "#1a1a2e")
+    Canvas.drawText(Renderer.WIDTH / 2 - 50, 288, "HIGH SCORE", "#888899", 12)
+    Canvas.drawText(Renderer.WIDTH / 2 - 30, 305, str(highScore), "#ffdd00", 20)
+    
+    // Controls box
+    Canvas.fillRect(Renderer.WIDTH / 2 - 130, 360, 260, 110, "#1a1a2e")
+    Canvas.fillRect(Renderer.WIDTH / 2 - 128, 362, 256, 106, "#12121e")
+    
+    Canvas.drawText(Renderer.WIDTH / 2 - 40, 368, "CONTROLS", "#ffffff", 14)
+    
+    Canvas.drawText(Renderer.WIDTH / 2 - 110, 395, "W/S", "#44ff44", 12)
+    Canvas.drawText(Renderer.WIDTH / 2 - 70, 395, "Move Forward/Back", "#888899", 12)
+    
+    Canvas.drawText(Renderer.WIDTH / 2 - 110, 415, "A/D", "#44ff44", 12)
+    Canvas.drawText(Renderer.WIDTH / 2 - 70, 415, "Strafe Left/Right", "#888899", 12)
+    
+    Canvas.drawText(Renderer.WIDTH / 2 - 110, 435, "Q/E", "#44ff44", 12)
+    Canvas.drawText(Renderer.WIDTH / 2 - 70, 435, "Turn Left/Right", "#888899", 12)
+    
+    Canvas.drawText(Renderer.WIDTH / 2 - 110, 455, "SPACE", "#ff4444", 12)
+    Canvas.drawText(Renderer.WIDTH / 2 - 50, 455, "Shoot    R - Reload", "#888899", 12)
     
     Canvas.render()
 end function
 
 // Render level complete screen
 Renderer.renderLevelComplete = function(level, score)
-    Canvas.clear(Colors.BLACK)
+    Canvas.clear("#0a0a15")
     
-    Canvas.drawText(Renderer.WIDTH / 2 - 100, 150, "LEVEL " + str(level) + " COMPLETE!", Colors.WALL_EXIT, 32)
-    Canvas.drawText(Renderer.WIDTH / 2 - 60, 250, "Score: " + str(score), Colors.TEXT_PRIMARY, 24)
-    Canvas.drawText(Renderer.WIDTH / 2 - 80, 350, "Press any key to continue", Colors.TEXT_SECONDARY, 18)
+    // Victory burst effect
+    for i in range(0, 8)
+        angle = i * 0.785  // PI/4
+        len = 80 + i * 20
+        x1 = Renderer.WIDTH / 2
+        y1 = 120
+        x2 = x1 + cos(angle) * len
+        y2 = y1 + sin(angle) * len
+        Canvas.drawLine(x1, y1, x2, y2, "#44ff4422")
+    end for
+    
+    // Level complete text
+    Canvas.drawText(Renderer.WIDTH / 2 - 142, 102, "LEVEL " + str(level) + " COMPLETE!", "#000000", 36)
+    Canvas.drawText(Renderer.WIDTH / 2 - 140, 100, "LEVEL " + str(level) + " COMPLETE!", "#44ff88", 36)
+    
+    // Score display
+    Canvas.fillRect(Renderer.WIDTH / 2 - 100, 200, 200, 80, "#222233")
+    Canvas.fillRect(Renderer.WIDTH / 2 - 98, 202, 196, 76, "#1a1a2e")
+    Canvas.drawText(Renderer.WIDTH / 2 - 30, 215, "SCORE", "#888899", 14)
+    Canvas.drawText(Renderer.WIDTH / 2 - 40, 245, str(score), "#ffdd00", 32)
+    
+    // Continue prompt
+    Canvas.drawText(Renderer.WIDTH / 2 - 90, 340, "Press any key to continue", "#888899", 16)
     
     Canvas.render()
 end function
 
 // Render game over screen
 Renderer.renderGameOver = function(score, highScore, isNewHigh)
-    Canvas.clear(Colors.BLACK)
+    Canvas.clear("#0a0a15")
     
-    Canvas.drawText(Renderer.WIDTH / 2 - 80, 100, "GAME OVER", Colors.TEXT_DANGER, 48)
+    // Death vignette effect
+    for i in range(0, 60)
+        alpha = (60 - i) / 60 * 0.3
+        r = floor(80 * alpha)
+        color = "#" + Renderer.toHex(r) + "0000"
+        Canvas.fillRect(0, i, Renderer.WIDTH, 1, color)
+        Canvas.fillRect(0, Renderer.HEIGHT + Renderer.HUD_HEIGHT - i, Renderer.WIDTH, 1, color)
+        Canvas.fillRect(i, 0, 1, Renderer.HEIGHT + Renderer.HUD_HEIGHT, color)
+        Canvas.fillRect(Renderer.WIDTH - i, 0, 1, Renderer.HEIGHT + Renderer.HUD_HEIGHT, color)
+    end for
     
-    Canvas.drawText(Renderer.WIDTH / 2 - 60, 200, "Score: " + str(score), Colors.TEXT_PRIMARY, 24)
+    // Game over text with shadow
+    Canvas.drawText(Renderer.WIDTH / 2 - 122, 82, "GAME OVER", "#330000", 52)
+    Canvas.drawText(Renderer.WIDTH / 2 - 120, 80, "GAME OVER", "#ff2222", 52)
     
+    // Score display
+    Canvas.fillRect(Renderer.WIDTH / 2 - 100, 180, 200, 80, "#222233")
+    Canvas.fillRect(Renderer.WIDTH / 2 - 98, 182, 196, 76, "#1a1a2e")
+    Canvas.drawText(Renderer.WIDTH / 2 - 40, 195, "FINAL SCORE", "#888899", 12)
+    Canvas.drawText(Renderer.WIDTH / 2 - 40, 220, str(score), "#ffffff", 32)
+    
+    // High score display
     if isNewHigh then
-        Canvas.drawText(Renderer.WIDTH / 2 - 80, 250, "NEW HIGH SCORE!", Colors.WALL_EXIT, 20)
+        // Flash effect for new high score
+        Canvas.fillRect(Renderer.WIDTH / 2 - 90, 280, 180, 40, "#443300")
+        Canvas.fillRect(Renderer.WIDTH / 2 - 88, 282, 176, 36, "#332200")
+        Canvas.drawText(Renderer.WIDTH / 2 - 72, 290, "NEW HIGH SCORE!", "#ffdd00", 16)
     else
-        Canvas.drawText(Renderer.WIDTH / 2 - 70, 250, "High Score: " + str(highScore), Colors.TEXT_SECONDARY, 18)
+        Canvas.drawText(Renderer.WIDTH / 2 - 55, 290, "High Score: " + str(highScore), "#666677", 14)
     end if
     
-    Canvas.drawText(Renderer.WIDTH / 2 - 80, 350, "Press R to restart", Colors.TEXT_SECONDARY, 18)
-    Canvas.drawText(Renderer.WIDTH / 2 - 80, 380, "Press ESC to quit", Colors.TEXT_SECONDARY, 18)
+    // Restart options
+    Canvas.fillRect(Renderer.WIDTH / 2 - 80, 360, 160, 35, "#223322")
+    Canvas.fillRect(Renderer.WIDTH / 2 - 78, 362, 156, 31, "#1a2a1a")
+    Canvas.drawText(Renderer.WIDTH / 2 - 58, 370, "R - RESTART", "#44ff44", 14)
+    
+    Canvas.fillRect(Renderer.WIDTH / 2 - 80, 405, 160, 35, "#332222")
+    Canvas.fillRect(Renderer.WIDTH / 2 - 78, 407, 156, 31, "#2a1a1a")
+    Canvas.drawText(Renderer.WIDTH / 2 - 45, 415, "ESC - QUIT", "#ff4444", 14)
     
     Canvas.render()
 end function

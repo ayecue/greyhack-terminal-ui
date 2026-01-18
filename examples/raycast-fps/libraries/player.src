@@ -27,9 +27,11 @@ Player.shootCooldown = 0
 Player.shootDelay = 0.3
 Player.damage = 25
 Player.muzzleFlash = 0
+Player.damageFlash = 0
 
 // State
 Player.isDead = false
+Player.isMoving = false
 
 // Initialize player
 Player.init = function()
@@ -40,8 +42,10 @@ Player.init = function()
     Player.ammo = Player.maxAmmo
     Player.score = 0
     Player.isDead = false
+    Player.isMoving = false
     Player.shootCooldown = 0
     Player.muzzleFlash = 0
+    Player.damageFlash = 0
 end function
 
 // Reset for new level
@@ -52,8 +56,10 @@ Player.reset = function()
     Player.health = Player.maxHealth
     Player.ammo = Player.maxAmmo
     Player.isDead = false
+    Player.isMoving = false
     Player.shootCooldown = 0
     Player.muzzleFlash = 0
+    Player.damageFlash = 0
 end function
 
 // Update player
@@ -66,6 +72,9 @@ Player.update = function(input, deltaTime)
     end if
     if Player.muzzleFlash > 0 then
         Player.muzzleFlash = Player.muzzleFlash - deltaTime
+    end if
+    if Player.damageFlash > 0 then
+        Player.damageFlash = Player.damageFlash - deltaTime * 15
     end if
     
     // Turning
@@ -89,6 +98,9 @@ Player.update = function(input, deltaTime)
     moveX = 0
     moveY = 0
     moveMult = deltaTime * 2
+    
+    // Track if player is moving for visual effects
+    Player.isMoving = (input.forward > 0 or input.backward > 0 or input.strafeLeft > 0 or input.strafeRight > 0)
     
     if input.forward > 0 then
         mult = moveMult * input.forward
@@ -159,6 +171,8 @@ Player.takeDamage = function(amount)
     if Player.isDead then return
     
     Player.health = Player.health - amount
+    Player.damageFlash = 8  // Start damage visual effect
+    
     if Player.health <= 0 then
         Player.health = 0
         Player.isDead = true
