@@ -22,6 +22,19 @@ Player.moveSpeed = 4.0
 Player.turnSpeed = 0.15
 Player.strafeSpeed = 3.5
 
+// Acceleration settings
+Player.acceleration = 8.0      // How fast we speed up
+Player.deceleration = 12.0     // How fast we slow down (friction)
+Player.maxVelocity = 1.0       // Max velocity multiplier
+Player.turnAccel = 3.0         // Turn acceleration (slower start)
+Player.turnDecel = 8.0         // Turn deceleration
+Player.maxTurnVel = 1.2        // Max turn velocity (slightly higher top speed)
+
+// Current velocities (for smooth movement)
+Player.velForward = 0
+Player.velStrafe = 0
+Player.velTurn = 0
+
 // Combat
 Player.shootCooldown = 0
 Player.shootDelay = 0.3
@@ -43,6 +56,9 @@ Player.init = function()
     Player.score = 0
     Player.isDead = false
     Player.isMoving = false
+    Player.velForward = 0
+    Player.velStrafe = 0
+    Player.velTurn = 0
     Player.shootCooldown = 0
     Player.muzzleFlash = 0
     Player.damageFlash = 0
@@ -57,6 +73,9 @@ Player.reset = function()
     Player.ammo = Player.maxAmmo
     Player.isDead = false
     Player.isMoving = false
+    Player.velForward = 0
+    Player.velStrafe = 0
+    Player.velTurn = 0
     Player.shootCooldown = 0
     Player.muzzleFlash = 0
     Player.damageFlash = 0
@@ -77,13 +96,30 @@ Player.update = function(input, deltaTime)
         Player.damageFlash = Player.damageFlash - deltaTime * 15
     end if
     
-    // Turning
-    if input.turnLeft > 0 then
-        Player.angle = Player.angle - Player.turnSpeed * input.turnLeft
+    // === TURNING WITH ACCELERATION ===
+    targetTurn = 0
+    if input.turnLeft > 0 then targetTurn = -1
+    if input.turnRight > 0 then targetTurn = 1
+    
+    if targetTurn != 0 then
+        // Accelerate towards target
+        Player.velTurn = Player.velTurn + targetTurn * Player.turnAccel * deltaTime
+        // Clamp to max
+        if Player.velTurn > Player.maxTurnVel then Player.velTurn = Player.maxTurnVel
+        if Player.velTurn < -Player.maxTurnVel then Player.velTurn = -Player.maxTurnVel
+    else
+        // Decelerate (friction) - use turnDecel for turning
+        if Player.velTurn > 0 then
+            Player.velTurn = Player.velTurn - Player.turnDecel * deltaTime
+            if Player.velTurn < 0 then Player.velTurn = 0
+        else if Player.velTurn < 0 then
+            Player.velTurn = Player.velTurn + Player.turnDecel * deltaTime
+            if Player.velTurn > 0 then Player.velTurn = 0
+        end if
     end if
-    if input.turnRight > 0 then
-        Player.angle = Player.angle + Player.turnSpeed * input.turnRight
-    end if
+    
+    // Apply turn velocity
+    Player.angle = Player.angle + Player.velTurn * Player.turnSpeed
     
     // Normalize angle
     PI2 = 6.28318530718
@@ -94,39 +130,64 @@ Player.update = function(input, deltaTime)
         Player.angle = Player.angle - PI2
     end while
     
-    // Movement
-    moveX = 0
-    moveY = 0
-    moveMult = deltaTime * 2
+    // === FORWARD/BACKWARD WITH ACCELERATION ===
+    targetForward = 0
+    if input.forward > 0 then targetForward = 1
+    if input.backward > 0 then targetForward = -1
+    
+    if targetForward != 0 then
+        // Accelerate towards target
+        Player.velForward = Player.velForward + targetForward * Player.acceleration * deltaTime
+        // Clamp to max
+        if Player.velForward > Player.maxVelocity then Player.velForward = Player.maxVelocity
+        if Player.velForward < -Player.maxVelocity then Player.velForward = -Player.maxVelocity
+    else
+        // Decelerate (friction)
+        if Player.velForward > 0 then
+            Player.velForward = Player.velForward - Player.deceleration * deltaTime
+            if Player.velForward < 0 then Player.velForward = 0
+        else if Player.velForward < 0 then
+            Player.velForward = Player.velForward + Player.deceleration * deltaTime
+            if Player.velForward > 0 then Player.velForward = 0
+        end if
+    end if
+    
+    // === STRAFE WITH ACCELERATION ===
+    targetStrafe = 0
+    if input.strafeRight > 0 then targetStrafe = 1
+    if input.strafeLeft > 0 then targetStrafe = -1
+    
+    if targetStrafe != 0 then
+        // Accelerate towards target
+        Player.velStrafe = Player.velStrafe + targetStrafe * Player.acceleration * deltaTime
+        // Clamp to max
+        if Player.velStrafe > Player.maxVelocity then Player.velStrafe = Player.maxVelocity
+        if Player.velStrafe < -Player.maxVelocity then Player.velStrafe = -Player.maxVelocity
+    else
+        // Decelerate (friction)
+        if Player.velStrafe > 0 then
+            Player.velStrafe = Player.velStrafe - Player.deceleration * deltaTime
+            if Player.velStrafe < 0 then Player.velStrafe = 0
+        else if Player.velStrafe < 0 then
+            Player.velStrafe = Player.velStrafe + Player.deceleration * deltaTime
+            if Player.velStrafe > 0 then Player.velStrafe = 0
+        end if
+    end if
     
     // Track if player is moving for visual effects
-    Player.isMoving = (input.forward > 0 or input.backward > 0 or input.strafeLeft > 0 or input.strafeRight > 0)
+    Player.isMoving = (abs(Player.velForward) > 0.1 or abs(Player.velStrafe) > 0.1)
     
-    if input.forward > 0 then
-        mult = moveMult * input.forward
-        if mult > deltaTime * 3 then mult = deltaTime * 3
-        moveX = moveX + cos(Player.angle) * Player.moveSpeed * mult
-        moveY = moveY + sin(Player.angle) * Player.moveSpeed * mult
-    end if
-    if input.backward > 0 then
-        mult = moveMult * input.backward
-        if mult > deltaTime * 3 then mult = deltaTime * 3
-        moveX = moveX - cos(Player.angle) * Player.moveSpeed * mult
-        moveY = moveY - sin(Player.angle) * Player.moveSpeed * mult
-    end if
+    // Calculate movement from velocities
+    moveX = 0
+    moveY = 0
     
-    if input.strafeLeft > 0 then
-        mult = moveMult * input.strafeLeft
-        if mult > deltaTime * 3 then mult = deltaTime * 3
-        moveX = moveX + cos(Player.angle - 1.5708) * Player.strafeSpeed * mult
-        moveY = moveY + sin(Player.angle - 1.5708) * Player.strafeSpeed * mult
-    end if
-    if input.strafeRight > 0 then
-        mult = moveMult * input.strafeRight
-        if mult > deltaTime * 3 then mult = deltaTime * 3
-        moveX = moveX + cos(Player.angle + 1.5708) * Player.strafeSpeed * mult
-        moveY = moveY + sin(Player.angle + 1.5708) * Player.strafeSpeed * mult
-    end if
+    // Forward/backward movement
+    moveX = moveX + cos(Player.angle) * Player.moveSpeed * Player.velForward * deltaTime
+    moveY = moveY + sin(Player.angle) * Player.moveSpeed * Player.velForward * deltaTime
+    
+    // Strafe movement
+    moveX = moveX + cos(Player.angle + 1.5708) * Player.strafeSpeed * Player.velStrafe * deltaTime
+    moveY = moveY + sin(Player.angle + 1.5708) * Player.strafeSpeed * Player.velStrafe * deltaTime
     
     // Apply movement with collision
     newX = Player.x + moveX
