@@ -8,13 +8,19 @@ Sounds = {}
 Sounds.init = function()
     ui = ""
     
-    // Gunshot - sharp attack, quick decay
+    // Gunshot - deep bass boom with punch
     ui = ui + "var gunshot = Sound.create(""gunshot"")" + char(10)
     ui = ui + "gunshot.clear()" + char(10)
-    ui = ui + "gunshot.addNote(45, 0.02, 1.0)" + char(10)
-    ui = ui + "gunshot.addNote(72, 0.03, 0.9)" + char(10)
-    ui = ui + "gunshot.addNote(55, 0.02, 0.7)" + char(10)
-    ui = ui + "gunshot.addNote(40, 0.05, 0.4)" + char(10)
+    // Deep bass explosion - the main boom
+    ui = ui + "gunshot.addNote(24, 0.03, 1.0)" + char(10)
+    ui = ui + "gunshot.addNote(28, 0.025, 1.0)" + char(10)
+    ui = ui + "gunshot.addNote(32, 0.02, 0.95)" + char(10)
+    // Sub-bass rumble
+    ui = ui + "gunshot.addNote(20, 0.04, 0.9)" + char(10)
+    ui = ui + "gunshot.addNote(24, 0.035, 0.8)" + char(10)
+    // Decay
+    ui = ui + "gunshot.addNote(28, 0.05, 0.5)" + char(10)
+    ui = ui + "gunshot.addNote(24, 0.06, 0.3)" + char(10)
     
     // Enemy hit - meaty thud
     ui = ui + "var enemyHit = Sound.create(""enemyHit"")" + char(10)
