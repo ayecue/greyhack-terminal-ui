@@ -1,0 +1,185 @@
+// =============================================================================
+// TODO App: Render State Management
+// =============================================================================
+// Handles saving/loading render state to file for split execution
+
+RenderState = {}
+
+// File path for render state
+RenderState.STATE_FILE = "/root/todo_render.state"
+
+// State types
+RenderState.MODE_LIST = "list"
+RenderState.MODE_ADD = "add"
+RenderState.MODE_EDIT = "edit"
+RenderState.MODE_CONFIRM = "confirm"
+
+// Current render state data
+RenderState.mode = "list"
+RenderState.data = {}
+
+// Save render state to file
+RenderState.save = function()
+    computer = get_shell.host_computer
+    
+    content = self.mode + char(10)
+    content = content + self.serializeData()
+    
+    // Write to file - first check if file exists
+    file = computer.File(self.STATE_FILE)
+    if file == null then
+        result = computer.touch("/root", "todo_render.state")
+        if typeof(result) == "string" then
+            print("Touch error: " + result)
+        end if
+        file = computer.File(self.STATE_FILE)
+    end if
+    
+    if file != null then
+        file.set_content(content)
+        wait(0.05)
+    else
+        print("ERROR: Could not create state file!")
+    end if
+end function
+
+// Load render state from file
+RenderState.load = function()
+    computer = get_shell.host_computer
+    file = computer.File(self.STATE_FILE)
+    
+    if file == null then
+        return false
+    end if
+    
+    content = file.get_content
+    if content == null or content.len == 0 then
+        return false
+    end if
+    
+    lines = content.split(char(10))
+    
+    if lines.len < 1 then return false
+    
+    self.mode = lines[0]
+    self.data = self.deserializeData(lines[1:])
+
+    return true
+end function
+
+// Serialize data to string
+RenderState.serializeData = function()
+    result = ""
+    for key in self.data.indexes
+        value = self.data[key]
+        result = result + key + "=" + str(value) + char(10)
+    end for
+    return result
+end function
+
+// Deserialize data from lines
+RenderState.deserializeData = function(lines)
+    data = {}
+    for line in lines
+        eqPos = line.indexOf("=")
+        if eqPos != null and eqPos > 0 then
+            parts = line.split("=")
+            key = parts[0]
+            // Join remaining parts in case value contains =
+            valueParts = []
+            i = 1
+            while i < parts.len
+                valueParts.push(parts[i])
+                i = i + 1
+            end while
+            value = valueParts.join("=")
+            
+            // Try to parse as number
+            if value == "true" then
+                data[key] = true
+            else if value == "false" then
+                data[key] = false
+            else if value.val != 0 or value == "0" then
+                data[key] = value.val
+            else
+                data[key] = value
+            end if
+        end if
+    end for
+    return data
+end function
+
+// Set list view state
+RenderState.setList = function(todos, selectedIndex, scrollOffset, message)
+    self.mode = self.MODE_LIST
+    self.data = {}
+    self.data["selectedIndex"] = selectedIndex
+    self.data["scrollOffset"] = scrollOffset
+    self.data["message"] = message
+    self.data["todoCount"] = todos.len
+    
+    // Serialize todos
+    i = 0
+    for todo in todos
+        self.data["todo_" + i + "_text"] = todo.text
+        self.data["todo_" + i + "_done"] = todo.done
+        self.data["todo_" + i + "_id"] = todo.id
+        i = i + 1
+    end for
+    
+    self.save()
+end function
+
+// Set add mode state
+RenderState.setAdd = function(inputText, message)
+    self.mode = self.MODE_ADD
+    self.data = {}
+    self.data["inputText"] = inputText
+    self.data["message"] = message
+    self.save()
+end function
+
+// Set edit mode state
+RenderState.setEdit = function(todoIndex, inputText, message)
+    self.mode = self.MODE_EDIT
+    self.data = {}
+    self.data["todoIndex"] = todoIndex
+    self.data["inputText"] = inputText
+    self.data["message"] = message
+    self.save()
+end function
+
+// Set confirm dialog state
+RenderState.setConfirm = function(title, message, todoIndex)
+    self.mode = self.MODE_CONFIRM
+    self.data = {}
+    self.data["title"] = title
+    self.data["message"] = message
+    self.data["todoIndex"] = todoIndex
+    self.save()
+end function
+
+// Parse todos from loaded data
+RenderState.getTodos = function()
+    todos = []
+    if not self.data.hasIndex("todoCount") then return todos
+    
+    count = self.data["todoCount"]
+    i = 0
+    while i < count
+        todo = {}
+        textKey = "todo_" + i + "_text"
+        doneKey = "todo_" + i + "_done"
+        idKey = "todo_" + i + "_id"
+        
+        if self.data.hasIndex(textKey) then
+            todo.text = self.data[textKey]
+            todo.done = self.data[doneKey]
+            todo.id = self.data[idKey]
+            todos.push(todo)
+        end if
+        i = i + 1
+    end while
+    
+    return todos
+end function

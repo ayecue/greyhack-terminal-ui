@@ -1,0 +1,93 @@
+// =============================================================================
+// TODO App: Edit Scene
+// =============================================================================
+// Edit existing todo interface
+
+EditScene = {}
+
+EditScene.todoIndex = 0
+EditScene.inputText = ""
+EditScene.originalText = ""
+
+EditScene.setTodo = function(index)
+    self.todoIndex = index
+    if index < TodoState.todos.len then
+        self.originalText = TodoState.todos[index].text
+        self.inputText = self.originalText
+    else
+        self.originalText = ""
+        self.inputText = ""
+    end if
+end function
+
+EditScene.enter = function()
+    self.syncRenderState()
+    self.draw()
+end function
+
+EditScene.draw = function()
+    wait(0.1)
+    clear_screen
+    print("=== EDIT TODO ===")
+    print("")
+    print("Original: " + self.originalText)
+    print("")
+    print("Enter new text below.")
+    print("Press ENTER when done, or type 'cancel' to go back.")
+    print("")
+    print("Current: " + self.inputText + "_")
+    print("")
+end function
+
+EditScene.syncRenderState = function()
+    RenderState.setEdit(self.todoIndex, self.inputText, "Edit todo text:")
+end function
+
+EditScene.update = function(key)
+    // Check for cancel command
+    if key == "cancel" or key == "q" then
+        TodoState.message = "Edit cancelled"
+        return ListScene
+    end if
+    
+    // Otherwise treat input as the new todo text
+    if key.len > 0 then
+        // Update the todo
+        if TodoState.editTodo(self.todoIndex, key) then
+            return ListScene
+        else
+            self.syncRenderState()
+            self.draw()
+        end if
+    end if
+    
+    return null
+end function
+
+// Method for interactive text input
+EditScene.handleTextInput = function()
+    wait(0.1)
+    clear_screen
+    print("=== EDIT TODO ===")
+    print("")
+    print("Original: " + self.originalText)
+    print("")
+    print("Enter new text (or 'cancel' to go back):")
+    print("")
+    
+    text = user_input("> ", false, false)
+    text = text.trim
+    
+    if text.lower == "cancel" or text.lower == "q" then
+        TodoState.message = "Edit cancelled"
+        return ListScene
+    end if
+    
+    if text.len > 0 then
+        TodoState.editTodo(self.todoIndex, text)
+        return ListScene
+    else
+        TodoState.message = "Cannot set empty text"
+        return ListScene
+    end if
+end function

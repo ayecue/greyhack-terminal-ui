@@ -1,0 +1,46 @@
+// =============================================================================
+// TODO App: Color Palette
+// =============================================================================
+
+Colors = {}
+
+// Base colors
+Colors.WHITE = "#FFFFFF"
+Colors.BLACK = "#000000"
+Colors.DARK = "#1A1A2E"
+Colors.DARKER = "#0F0F1A"
+
+// UI colors - Modern dark theme
+Colors.BG_PRIMARY = "#16213E"
+Colors.BG_SECONDARY = "#1A1A2E"
+Colors.BG_HEADER = "#0F3460"
+Colors.BG_INPUT = "#1F4068"
+
+// Accent colors
+Colors.ACCENT = "#E94560"
+Colors.ACCENT_LIGHT = "#FF6B6B"
+Colors.ACCENT_SECONDARY = "#00D9FF"
+
+// Text colors
+Colors.TEXT_PRIMARY = "#EAEAEA"
+Colors.TEXT_SECONDARY = "#A0A0A0"
+Colors.TEXT_MUTED = "#666666"
+Colors.TEXT_SUCCESS = "#4ADE80"
+Colors.TEXT_ERROR = "#FF6B6B"
+
+// Todo item colors
+Colors.TODO_INCOMPLETE = "#3282B8"
+Colors.TODO_COMPLETE = "#4ADE80"
+Colors.TODO_SELECTED = "#E94560"
+Colors.TODO_BG = "#1F4068"
+Colors.TODO_BG_SELECTED = "#2A5278"
+
+// Border colors
+Colors.BORDER = "#3A3A5C"
+Colors.BORDER_LIGHT = "#4A4A7C"
+Colors.BORDER_ACCENT = "#E94560"
+
+// Checkbox colors
+Colors.CHECKBOX_EMPTY = "#3A3A5C"
+Colors.CHECKBOX_CHECKED = "#4ADE80"
+Colors.CHECKBOX_BORDER = "#666666"

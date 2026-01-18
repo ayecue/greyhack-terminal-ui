@@ -1,0 +1,128 @@
+// =============================================================================
+// TODO App: List Scene
+// =============================================================================
+// Main todo list view
+
+ListScene = {}
+
+ListScene.confirmDelete = false
+ListScene.deleteIndex = 0
+
+ListScene.enter = function()
+    self.confirmDelete = false
+    self.deleteIndex = 0
+    self.syncRenderState()
+    self.draw()
+end function
+
+ListScene.draw = function()
+    wait(0.1)
+    clear_screen
+    print("=== TODO LIST ===")
+    print("")
+    
+    stats = TodoState.getStats()
+    print("Total: " + stats.total + " | Done: " + stats.completed + " | Pending: " + stats.pending)
+    print("")
+    
+    if TodoState.todos.len == 0 then
+        print("No todos yet. Press [A] to add one!")
+    else
+        i = 0
+        for todo in TodoState.todos
+            prefix = "  "
+            if i == TodoState.selectedIndex then prefix = "> "
+            
+            checkbox = "[ ]"
+            if todo.done then checkbox = "[X]"
+            
+            print(prefix + checkbox + " " + todo.text)
+            i = i + 1
+        end for
+    end if
+    
+    print("")
+    print("---")
+    print(TodoState.message)
+    print("---")
+    print("[W/S] Navigate | [E] Toggle | [A] Add | [D] Delete | [X] Edit | [Q] Quit")
+end function
+
+ListScene.syncRenderState = function()
+    RenderState.setList(TodoState.todos, TodoState.selectedIndex, TodoState.scrollOffset, TodoState.message)
+end function
+
+ListScene.update = function(key)
+    if self.confirmDelete then
+        return self.handleConfirmDelete(key)
+    end if
+    
+    if key == "w" or key == "uparrow" then
+        TodoState.moveUp()
+        self.syncRenderState()
+        self.draw()
+    else if key == "s" or key == "downarrow" then
+        TodoState.moveDown()
+        self.syncRenderState()
+        self.draw()
+    else if key == "e" or key == " " then
+        // Toggle completion
+        if TodoState.todos.len > 0 then
+            TodoState.toggleTodo(TodoState.selectedIndex)
+            self.syncRenderState()
+            self.draw()
+        end if
+    else if key == "a" then
+        // Switch to add scene
+        return AddScene
+    else if key == "d" then
+        // Confirm delete
+        if TodoState.todos.len > 0 then
+            self.confirmDelete = true
+            self.deleteIndex = TodoState.selectedIndex
+            RenderState.setConfirm("DELETE?", "CONFIRM DELETE", self.deleteIndex)
+            self.drawConfirm()
+        end if
+    else if key == "x" then
+        // Switch to edit scene
+        if TodoState.todos.len > 0 then
+            EditScene.setTodo(TodoState.selectedIndex)
+            return EditScene
+        end if
+    else if key == "q" then
+        print("")
+        print("Goodbye!")
+        exit
+    end if
+    
+    return null
+end function
+
+ListScene.handleConfirmDelete = function(key)
+    if key == "y" then
+        TodoState.deleteTodo(self.deleteIndex)
+        self.confirmDelete = false
+        self.syncRenderState()
+        self.draw()
+    else if key == "n" or key == "q" then
+        self.confirmDelete = false
+        TodoState.message = "Delete cancelled"
+        self.syncRenderState()
+        self.draw()
+    else
+        self.drawConfirm()
+    end if
+    return null
+end function
+
+ListScene.drawConfirm = function()
+    wait(0.1)
+    clear_screen
+    print("=== CONFIRM DELETE ===")
+    print("")
+    if self.deleteIndex < TodoState.todos.len then
+        print("Delete: " + TodoState.todos[self.deleteIndex].text)
+    end if
+    print("")
+    print("[Y] Yes, delete | [N] No, cancel")
+end function

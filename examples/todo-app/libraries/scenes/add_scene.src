@@ -1,0 +1,86 @@
+// =============================================================================
+// TODO App: Add Scene
+// =============================================================================
+// Add new todo interface
+
+AddScene = {}
+
+AddScene.inputText = ""
+
+AddScene.enter = function()
+    self.inputText = ""
+    self.syncRenderState()
+    self.draw()
+end function
+
+AddScene.draw = function()
+    wait(0.1)
+    clear_screen
+    print("=== ADD TODO ===")
+    print("")
+    print("Enter the todo text below.")
+    print("Press ENTER when done, or type 'cancel' to go back.")
+    print("")
+    print("Current: " + self.inputText + "_")
+    print("")
+end function
+
+AddScene.syncRenderState = function()
+    RenderState.setAdd(self.inputText, "Enter todo text:")
+end function
+
+AddScene.update = function(key)
+    // In this scene, we use full text input instead of single keys
+    // The main loop should detect when we're in add mode
+    
+    // For single-key mode compatibility:
+    if key == "" then
+        self.draw()
+        return null
+    end if
+    
+    // Check for cancel command
+    if key == "cancel" or key == "q" then
+        TodoState.message = "Add cancelled"
+        return ListScene
+    end if
+    
+    // Otherwise treat input as the todo text
+    if key.len > 0 then
+        // Add the todo
+        if TodoState.addTodo(key) then
+            return ListScene
+        else
+            self.syncRenderState()
+            self.draw()
+        end if
+    end if
+    
+    return null
+end function
+
+// Method for interactive text input
+AddScene.handleTextInput = function()
+    wait(0.1)
+    clear_screen
+    print("=== ADD TODO ===")
+    print("")
+    print("Enter todo text (or 'cancel' to go back):")
+    print("")
+    
+    text = user_input("> ", false, false)
+    text = text.trim
+    
+    if text.lower == "cancel" or text.lower == "q" then
+        TodoState.message = "Add cancelled"
+        return ListScene
+    end if
+    
+    if text.len > 0 then
+        TodoState.addTodo(text)
+        return ListScene
+    else
+        TodoState.message = "Cannot add empty todo"
+        return ListScene
+    end if
+end function

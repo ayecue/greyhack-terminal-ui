@@ -1,0 +1,41 @@
+// =============================================================================
+// TODO App: Utility Functions
+// =============================================================================
+
+roundNumber = function(num, places = 0)
+    factor = 10 ^ places
+    return round(num * factor) / factor
+end function
+
+// Pad string to length
+padRight = function(str, length, char = " ")
+    while str.len < length
+        str = str + char
+    end while
+    return str
+end function
+
+padLeft = function(str, length, char = " ")
+    while str.len < length
+        str = char + str
+    end while
+    return str
+end function
+
+// Truncate string with ellipsis
+truncate = function(str, maxLen)
+    if str.len <= maxLen then return str
+    return str[:maxLen - 3] + "..."
+end function
+
+// Clamp value between min and max
+clamp = function(value, minVal, maxVal)
+    if value < minVal then return minVal
+    if value > maxVal then return maxVal
+    return value
+end function
+
+// Get current timestamp as string
+getTimestamp = function()
+    return str(time)
+end function

@@ -1,0 +1,252 @@
+// =============================================================================
+// TODO App: Todo State Management
+// =============================================================================
+// Manages the todo list data and persistence
+
+TodoState = {}
+
+// File path for persistent storage
+TodoState.SAVE_FILE = "/root/todos.dat"
+
+// Todo list
+TodoState.todos = []
+TodoState.nextId = 1
+
+// UI state
+TodoState.selectedIndex = 0
+TodoState.scrollOffset = 0
+TodoState.message = "Welcome to TODO App!"
+
+// Max visible items
+TodoState.MAX_VISIBLE = 8
+
+// Initialize state
+TodoState.init = function()
+    self.todos = []
+    self.nextId = 1
+    self.selectedIndex = 0
+    self.scrollOffset = 0
+    self.message = "Welcome to TODO App!"
+    self.load()
+end function
+
+// Create a new todo item
+TodoState.createTodo = function(text)
+    todo = {}
+    todo.id = self.nextId
+    todo.text = text
+    todo.done = false
+    todo.createdAt = time
+    self.nextId = self.nextId + 1
+    return todo
+end function
+
+// Add a new todo
+TodoState.addTodo = function(text)
+    if text.len == 0 then
+        self.message = "Cannot add empty todo!"
+        return false
+    end if
+    
+    todo = self.createTodo(text)
+    self.todos.push(todo)
+    self.message = "Added: " + truncate(text, 20)
+    self.save()
+    return true
+end function
+
+// Delete todo at index
+TodoState.deleteTodo = function(index)
+    if index < 0 or index >= self.todos.len then
+        self.message = "Invalid todo index!"
+        return false
+    end if
+    
+    deleted = self.todos[index]
+    self.todos.remove(index)
+    
+    // Adjust selection
+    if self.selectedIndex >= self.todos.len then
+        self.selectedIndex = self.todos.len - 1
+    end if
+    if self.selectedIndex < 0 then
+        self.selectedIndex = 0
+    end if
+    
+    self.message = "Deleted: " + truncate(deleted.text, 20)
+    self.save()
+    return true
+end function
+
+// Toggle todo completion
+TodoState.toggleTodo = function(index)
+    if index < 0 or index >= self.todos.len then
+        return false
+    end if
+    
+    self.todos[index].done = not self.todos[index].done
+    
+    if self.todos[index].done then
+        self.message = "Completed: " + truncate(self.todos[index].text, 20)
+    else
+        self.message = "Uncompleted: " + truncate(self.todos[index].text, 20)
+    end if
+    
+    self.save()
+    return true
+end function
+
+// Edit todo text
+TodoState.editTodo = function(index, newText)
+    if index < 0 or index >= self.todos.len then
+        self.message = "Invalid todo index!"
+        return false
+    end if
+    
+    if newText.len == 0 then
+        self.message = "Cannot set empty text!"
+        return false
+    end if
+    
+    self.todos[index].text = newText
+    self.message = "Updated: " + truncate(newText, 20)
+    self.save()
+    return true
+end function
+
+// Move selection up
+TodoState.moveUp = function()
+    if self.todos.len == 0 then return
+    
+    self.selectedIndex = self.selectedIndex - 1
+    if self.selectedIndex < 0 then
+        self.selectedIndex = self.todos.len - 1
+        // Scroll to bottom if needed
+        if self.todos.len > self.MAX_VISIBLE then
+            self.scrollOffset = self.todos.len - self.MAX_VISIBLE
+        end if
+    end if
+    
+    // Adjust scroll
+    if self.selectedIndex < self.scrollOffset then
+        self.scrollOffset = self.selectedIndex
+    end if
+end function
+
+// Move selection down
+TodoState.moveDown = function()
+    if self.todos.len == 0 then return
+    
+    self.selectedIndex = self.selectedIndex + 1
+    if self.selectedIndex >= self.todos.len then
+        self.selectedIndex = 0
+        self.scrollOffset = 0
+    end if
+    
+    // Adjust scroll
+    if self.selectedIndex >= self.scrollOffset + self.MAX_VISIBLE then
+        self.scrollOffset = self.selectedIndex - self.MAX_VISIBLE + 1
+    end if
+end function
+
+// Get visible todos for rendering
+TodoState.getVisibleTodos = function()
+    if self.todos.len == 0 then return []
+    
+    startIdx = self.scrollOffset
+    endIdx = self.scrollOffset + self.MAX_VISIBLE
+    if endIdx > self.todos.len then endIdx = self.todos.len
+    
+    visible = []
+    i = startIdx
+    while i < endIdx
+        visible.push(self.todos[i])
+        i = i + 1
+    end while
+    
+    return visible
+end function
+
+// Get stats
+TodoState.getStats = function()
+    total = self.todos.len
+    completed = 0
+    for todo in self.todos
+        if todo.done then completed = completed + 1
+    end for
+    return {"total": total, "completed": completed, "pending": total - completed}
+end function
+
+// Save todos to file
+TodoState.save = function()
+    computer = get_shell.host_computer
+    
+    content = str(self.nextId) + char(10)
+    
+    for todo in self.todos
+        line = str(todo.id) + "|" + str(todo.done) + "|" + todo.text
+        content = content + line + char(10)
+    end for
+    
+    file = computer.File(self.SAVE_FILE)
+    if file == null then
+        result = computer.touch("/root", "todos.dat")
+        file = computer.File(self.SAVE_FILE)
+    end if
+    
+    if file != null then
+        file.set_content(content)
+    end if
+end function
+
+// Load todos from file
+TodoState.load = function()
+    computer = get_shell.host_computer
+    file = computer.File(self.SAVE_FILE)
+    
+    if file == null then
+        self.message = "No saved todos found. Start adding!"
+        return false
+    end if
+    
+    content = file.get_content
+    if content == null or content.len == 0 then
+        return false
+    end if
+    
+    lines = content.split(char(10))
+    if lines.len < 1 then return false
+    
+    self.nextId = lines[0].val
+    if self.nextId < 1 then self.nextId = 1
+    
+    self.todos = []
+    i = 1
+    while i < lines.len
+        line = lines[i]
+        if line.len > 0 then
+            parts = line.split("|")
+            if parts.len >= 3 then
+                todo = {}
+                todo.id = parts[0].val
+                todo.done = parts[1] == "1" or parts[1] == "true"
+                // Join remaining parts in case text contains |
+                textParts = []
+                j = 2
+                while j < parts.len
+                    textParts.push(parts[j])
+                    j = j + 1
+                end while
+                todo.text = textParts.join("|")
+                self.todos.push(todo)
+            end if
+        end if
+        i = i + 1
+    end while
+    
+    if self.todos.len > 0 then
+        self.message = "Loaded " + self.todos.len + " todos"
+    end if
+    
+    return true
+end function

@@ -1,0 +1,174 @@
+// =============================================================================
+// TODO App - Main Entry Point
+// =============================================================================
+// A terminal-based todo list application for Grey Hack
+// Uses greyhack-terminal-canvas mod for graphical UI
+// =============================================================================
+// Run: todo display - Display mode (renders graphics)
+// Run: todo input   - Input mode (handles user input)
+// =============================================================================
+
+import_code("libraries/utils.src")
+import_code("libraries/colors.src")
+import_code("libraries/canvas.src")
+import_code("libraries/renderstate.src")
+import_code("libraries/todostate.src")
+import_code("libraries/renderer.src")
+import_code("libraries/scenes/scene_manager.src")
+import_code("libraries/scenes/list_scene.src")
+import_code("libraries/scenes/add_scene.src")
+import_code("libraries/scenes/edit_scene.src")
+
+// =====================================================
+// DISPLAY MODE - Renders graphics from state file
+// =====================================================
+runDisplayMode = function()
+    // Initialize canvas with command-based API
+    Canvas.init(800, 600)
+    lastStateHash = "FORCE_FIRST_RENDER"
+    lastMode = ""
+    
+    print("TODO App - Display Mode")
+    print("Waiting for input mode to start...")
+    print("")
+    
+    while true
+        loaded = RenderState.load()
+        
+        if loaded then
+            // Build hash to detect changes
+            dataStr = ""
+            for key in RenderState.data.indexes
+                dataStr = dataStr + key + ":" + str(RenderState.data[key]) + ";"
+            end for
+            currentHash = RenderState.mode + "|" + dataStr
+            
+            if currentHash != lastStateHash then
+                // Update last mode
+                if RenderState.mode != lastMode then
+                    lastMode = RenderState.mode
+                end if
+                
+                if RenderState.mode == "list" then
+                    TodoRenderer.renderListView(RenderState.data)
+                else if RenderState.mode == "add" then
+                    TodoRenderer.renderAddView(RenderState.data)
+                else if RenderState.mode == "edit" then
+                    TodoRenderer.renderEditView(RenderState.data)
+                else if RenderState.mode == "confirm" then
+                    TodoRenderer.renderConfirmView(RenderState.data)
+                end if
+                
+                Canvas.render()
+                lastStateHash = currentHash
+            end if
+        else
+            if lastStateHash != "waiting" then
+                Canvas.clear(Colors.BG_PRIMARY)
+                Canvas.drawText(300, 260, "WAITING...", Colors.TEXT_MUTED, 32)
+                Canvas.drawText(220, 310, "Run 'todo input' in another terminal", Colors.TEXT_SECONDARY, 20)
+                Canvas.render()
+                lastStateHash = "waiting"
+                lastMode = ""
+            end if
+        end if
+        
+        wait(0.1)
+    end while
+end function
+
+// =====================================================
+// INPUT MODE - Handles keyboard input and game logic
+// =====================================================
+runInputMode = function()
+    wait(0.1)  // Allow display mode to start first
+    clear_screen
+    
+    print("===========================================")
+    print("       TODO App - Input Mode")
+    print("===========================================")
+    print("")
+    print("Run 'todo display' in another terminal")
+    print("for the graphical interface.")
+    print("")
+    print("Loading...")
+    
+    // Initialize state
+    TodoState.init()
+    
+    // Start with list scene
+    SceneManager.setScene(ListScene)
+    
+    print("Ready!")
+    print("")
+    
+    while true
+        // Check current scene to determine input mode
+        currentScene = SceneManager.currentScene
+        
+        if currentScene == AddScene then
+            // Use full text input for adding
+            nextScene = AddScene.handleTextInput()
+            if nextScene != null then
+                SceneManager.setScene(nextScene)
+            end if
+        else if currentScene == EditScene then
+            // Use full text input for editing
+            nextScene = EditScene.handleTextInput()
+            if nextScene != null then
+                SceneManager.setScene(nextScene)
+            end if
+        else
+            // Use single character input for navigation
+            key = user_input(">", false, true)
+            key = key.lower
+            
+            wait(0.05)  // Small debounce
+            
+            nextScene = SceneManager.update(key)
+            if nextScene != null then
+                SceneManager.setScene(nextScene)
+            end if
+        end if
+    end while
+end function
+
+// =====================================================
+// MAIN ENTRY POINT
+// =====================================================
+
+// Check command line arguments
+args = params
+if args == null then args = []
+
+if args.len > 0 then
+    mode = args[0].lower
+    if mode == "display" then
+        runDisplayMode()
+    else if mode == "input" then
+        runInputMode()
+    else
+        print("Unknown mode: " + mode)
+        print("")
+        print("Usage: todo [display|input]")
+        print("  display - Graphics renderer mode (run first)")
+        print("  input   - Input/logic mode (run second)")
+    end if
+else
+    print("===========================================")
+    print("       TODO App for Grey Hack")
+    print("===========================================")
+    print("")
+    print("Usage: todo [display|input]")
+    print("")
+    print("  display - Graphics renderer mode")
+    print("           Run this first in one terminal")
+    print("")
+    print("  input   - Input/logic mode")
+    print("           Run this second in another terminal")
+    print("")
+    print("Example:")
+    print("  Terminal 1: todo display")
+    print("  Terminal 2: todo input")
+    print("")
+end if

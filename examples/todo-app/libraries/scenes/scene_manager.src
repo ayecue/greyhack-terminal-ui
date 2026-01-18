@@ -1,0 +1,23 @@
+// =============================================================================
+// TODO App: Scene Manager
+// =============================================================================
+
+SceneManager = {}
+SceneManager.currentScene = null
+
+SceneManager.setScene = function(scene)
+    if SceneManager.currentScene != null then
+        // Optional cleanup
+    end if
+    SceneManager.currentScene = scene
+    if SceneManager.currentScene != null then
+        SceneManager.currentScene.enter()
+    end if
+end function
+
+SceneManager.update = function(key)
+    if SceneManager.currentScene != null then
+        return SceneManager.currentScene.update(key)
+    end if
+    return null
+end function

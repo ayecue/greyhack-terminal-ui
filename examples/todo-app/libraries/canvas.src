@@ -1,0 +1,133 @@
+// =============================================================================
+// TODO App: Canvas Wrapper
+// =============================================================================
+// Wraps the greyhack-terminal-canvas mod to provide a simple drawing API.
+// Uses #UI{...} command blocks sent via print().
+// =============================================================================
+
+Canvas = {}
+
+// Configuration
+Canvas.DEFAULT_WIDTH = 800
+Canvas.DEFAULT_HEIGHT = 600
+Canvas.TITLE = "TODO App"
+
+// State
+Canvas._width = 800
+Canvas._height = 600
+Canvas._initialized = false
+Canvas._commands = []
+
+// Initialize the canvas
+Canvas.init = function(width, height)
+    if width == null then width = self.DEFAULT_WIDTH
+    if height == null then height = self.DEFAULT_HEIGHT
+    
+    self._width = width
+    self._height = height
+    self._commands = []
+    
+    script = ""
+    script = script + "if not hasInContext(""todoInit"") then " + char(10)
+    script = script + "var todoInit = true " + char(10)
+    script = script + "Canvas.setSize(" + width + ", " + height + ") " + char(10)
+    script = script + "Canvas.setTitle(""" + self.TITLE + """) " + char(10)
+    script = script + "Canvas.show() " + char(10)
+    script = script + "end if " + char(10)
+    
+    print("#UI{" + script + "}")
+    wait(0.2)
+    self._initialized = true
+end function
+
+// Get canvas dimensions
+Canvas.width = function()
+    return self._width
+end function
+
+Canvas.height = function()
+    return self._height
+end function
+
+// Clear canvas with color
+Canvas.clear = function(color)
+    if color == null then color = Colors.BG_PRIMARY
+    self._commands.push("Canvas.clear(""" + color + """)")
+end function
+
+// Set a single pixel
+Canvas.setPixel = function(x, y, color)
+    x = floor(x)
+    y = floor(y)
+    self._commands.push("Canvas.setPixel(""" + color + """," + x + "," + y + ")")
+end function
+
+// Draw a line
+Canvas.drawLine = function(x1, y1, x2, y2, color)
+    x1 = floor(x1)
+    y1 = floor(y1)
+    x2 = floor(x2)
+    y2 = floor(y2)
+    self._commands.push("Canvas.drawLine(""" + color + """," + x1 + "," + y1 + "," + x2 + "," + y2 + ")")
+end function
+
+// Draw rectangle outline
+Canvas.drawRect = function(x, y, w, h, color)
+    x = floor(x)
+    y = floor(y)
+    w = floor(w)
+    h = floor(h)
+    self._commands.push("Canvas.drawRect(""" + color + """," + x + "," + y + "," + w + "," + h + ")")
+end function
+
+// Draw filled rectangle
+Canvas.fillRect = function(x, y, w, h, color)
+    x = floor(x)
+    y = floor(y)
+    w = floor(w)
+    h = floor(h)
+    self._commands.push("Canvas.fillRect(""" + color + """," + x + "," + y + "," + w + "," + h + ")")
+end function
+
+// Draw circle outline
+Canvas.drawCircle = function(cx, cy, radius, color)
+    cx = floor(cx)
+    cy = floor(cy)
+    radius = floor(radius)
+    self._commands.push("Canvas.drawCircle(""" + color + """," + cx + "," + cy + "," + radius + ")")
+end function
+
+// Draw filled circle
+Canvas.fillCircle = function(cx, cy, radius, color)
+    cx = floor(cx)
+    cy = floor(cy)
+    radius = floor(radius)
+    self._commands.push("Canvas.fillCircle(""" + color + """," + cx + "," + cy + "," + radius + ")")
+end function
+
+// Draw text using native Canvas.drawText
+Canvas.drawText = function(x, y, text, color, size)
+    x = floor(x)
+    y = floor(y)
+    if size == null then size = 14
+    // Escape quotes in text
+    text = text.replace("""", "")
+    self._commands.push("Canvas.drawText(""" + color + """," + x + "," + y + ",""" + text + """," + size + ")")
+end function
+
+// Render all buffered commands
+Canvas.render = function()
+    if self._commands.len == 0 then
+        print("#UI{Canvas.render()}")
+        return
+    end if
+    
+    // Build the script from buffered commands
+    nl = char(10)
+    script = nl + "  " + self._commands.join(nl + "  ")
+    self._commands = []
+    
+    // Add Canvas.render() call and send to terminal-canvas mod
+    script = script + nl + "  Canvas.render()" + nl
+    print("#UI{" + script + "}")
+end function

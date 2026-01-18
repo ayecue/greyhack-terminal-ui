@@ -1,0 +1,270 @@
+// =============================================================================
+// TODO App: UI Renderer
+// =============================================================================
+// Renders the todo app UI using the Canvas API with native text rendering
+
+import_code("colors.src")
+
+TodoRenderer = {}
+
+// Canvas dimensions
+TodoRenderer.WIDTH = 800
+TodoRenderer.HEIGHT = 600
+
+// UI Layout constants
+TodoRenderer.HEADER_HEIGHT = 60
+TodoRenderer.FOOTER_HEIGHT = 50
+TodoRenderer.TODO_HEIGHT = 45
+TodoRenderer.PADDING = 20
+TodoRenderer.CHECKBOX_SIZE = 24
+
+// Font sizes
+TodoRenderer.FONT_TITLE = 32
+TodoRenderer.FONT_NORMAL = 20
+TodoRenderer.FONT_SMALL = 16
+
+// Draw checkbox
+TodoRenderer.drawCheckbox = function(x, y, checked, selected)
+    borderColor = Colors.CHECKBOX_BORDER
+    if selected then borderColor = Colors.ACCENT
+    
+    // Draw border
+    Canvas.drawRect(x, y, TodoRenderer.CHECKBOX_SIZE, TodoRenderer.CHECKBOX_SIZE, borderColor)
+    
+    // Fill if checked
+    if checked then
+        Canvas.fillRect(x + 4, y + 4, TodoRenderer.CHECKBOX_SIZE - 8, TodoRenderer.CHECKBOX_SIZE - 8, Colors.CHECKBOX_CHECKED)
+    end if
+end function
+
+// Draw header
+TodoRenderer.drawHeader = function(stats)
+    // Background
+    Canvas.fillRect(0, 0, TodoRenderer.WIDTH, TodoRenderer.HEADER_HEIGHT, Colors.BG_HEADER)
+    
+    // Title
+    Canvas.drawText(TodoRenderer.PADDING, 15, "TODO APP", Colors.ACCENT, TodoRenderer.FONT_TITLE)
+    
+    // Stats
+    statsText = str(stats.completed) + "/" + str(stats.total) + " done"
+    Canvas.drawText(TodoRenderer.WIDTH - 180, 20, statsText, Colors.TEXT_SECONDARY, TodoRenderer.FONT_NORMAL)
+end function
+
+// Draw footer with controls
+TodoRenderer.drawFooter = function(message)
+    footerY = TodoRenderer.HEIGHT - TodoRenderer.FOOTER_HEIGHT
+    
+    // Background
+    Canvas.fillRect(0, footerY, TodoRenderer.WIDTH, TodoRenderer.FOOTER_HEIGHT, Colors.BG_SECONDARY)
+    
+    // Border line
+    Canvas.drawLine(0, footerY, TodoRenderer.WIDTH, footerY, Colors.BORDER)
+    
+    // Message or controls
+    if message != null and message.len > 0 then
+        Canvas.drawText(TodoRenderer.PADDING, footerY + 15, message, Colors.TEXT_SECONDARY, TodoRenderer.FONT_SMALL)
+    else
+        Canvas.drawText(TodoRenderer.PADDING, footerY + 15, "[A] Add  [D] Delete  [X] Edit  [E] Toggle  [Q] Quit", Colors.TEXT_MUTED, TodoRenderer.FONT_SMALL)
+    end if
+end function
+
+// Draw a single todo item
+TodoRenderer.drawTodoItem = function(todo, index, selected)
+    itemY = TodoRenderer.HEADER_HEIGHT + (index * TodoRenderer.TODO_HEIGHT)
+    
+    // Background
+    bgColor = Colors.TODO_BG
+    if selected then bgColor = Colors.TODO_BG_SELECTED
+    Canvas.fillRect(0, itemY, TodoRenderer.WIDTH, TodoRenderer.TODO_HEIGHT, bgColor)
+    
+    // Selection indicator
+    if selected then
+        Canvas.fillRect(0, itemY, 6, TodoRenderer.TODO_HEIGHT, Colors.ACCENT)
+    end if
+    
+    // Checkbox
+    checkX = TodoRenderer.PADDING + 8
+    checkY = itemY + 10
+    TodoRenderer.drawCheckbox(checkX, checkY, todo.done, selected)
+    
+    // Text
+    textX = checkX + TodoRenderer.CHECKBOX_SIZE + 16
+    textY = itemY + 12
+    textColor = Colors.TEXT_PRIMARY
+    if todo.done then textColor = Colors.TEXT_MUTED
+    
+    // Truncate text to fit
+    displayText = todo.text
+    if displayText.len > 60 then displayText = displayText[:57] + "..."
+    Canvas.drawText(textX, textY, displayText, textColor, TodoRenderer.FONT_NORMAL)
+end function
+
+// Draw empty state
+TodoRenderer.drawEmptyState = function()
+    centerY = TodoRenderer.HEIGHT / 2 - 40
+    Canvas.drawText(TodoRenderer.WIDTH / 2 - 120, centerY, "No todos yet!", Colors.TEXT_MUTED, TodoRenderer.FONT_TITLE)
+    Canvas.drawText(TodoRenderer.WIDTH / 2 - 130, centerY + 50, "Press [A] to add one", Colors.TEXT_SECONDARY, TodoRenderer.FONT_NORMAL)
+end function
+
+// Draw scroll indicators
+TodoRenderer.drawScrollIndicators = function(canScrollUp, canScrollDown)
+    indicatorX = TodoRenderer.WIDTH - 30
+    
+    if canScrollUp then
+        Canvas.fillCircle(indicatorX, TodoRenderer.HEADER_HEIGHT + 20, 10, Colors.ACCENT)
+    end if
+    
+    if canScrollDown then
+        bottomY = TodoRenderer.HEIGHT - TodoRenderer.FOOTER_HEIGHT - 20
+        Canvas.fillCircle(indicatorX, bottomY, 10, Colors.ACCENT)
+    end if
+end function
+
+// Render list view
+TodoRenderer.renderListView = function(data)
+    // Clear background
+    Canvas.clear(Colors.BG_PRIMARY)
+    
+    // Get todos from render state
+    todos = RenderState.getTodos()
+    selectedIndex = 0
+    scrollOffset = 0
+    message = ""
+    
+    if data.hasIndex("selectedIndex") then selectedIndex = data["selectedIndex"]
+    if data.hasIndex("scrollOffset") then scrollOffset = data["scrollOffset"]
+    if data.hasIndex("message") then message = data["message"]
+    
+    // Calculate stats
+    stats = {"total": todos.len, "completed": 0}
+    for todo in todos
+        if todo.done then stats.completed = stats.completed + 1
+    end for
+    
+    // Draw header
+    TodoRenderer.drawHeader(stats)
+    
+    // Draw todos or empty state
+    if todos.len == 0 then
+        TodoRenderer.drawEmptyState()
+    else
+        // Calculate max visible items
+        contentHeight = TodoRenderer.HEIGHT - TodoRenderer.HEADER_HEIGHT - TodoRenderer.FOOTER_HEIGHT
+        maxVisible = floor(contentHeight / TodoRenderer.TODO_HEIGHT)
+        
+        startIdx = scrollOffset
+        endIdx = scrollOffset + maxVisible
+        if endIdx > todos.len then endIdx = todos.len
+        
+        visibleIdx = 0
+        i = startIdx
+        while i < endIdx
+            isSelected = (i == selectedIndex)
+            TodoRenderer.drawTodoItem(todos[i], visibleIdx, isSelected)
+            visibleIdx = visibleIdx + 1
+            i = i + 1
+        end while
+        
+        // Scroll indicators
+        canScrollUp = scrollOffset > 0
+        canScrollDown = (scrollOffset + maxVisible) < todos.len
+        TodoRenderer.drawScrollIndicators(canScrollUp, canScrollDown)
+    end if
+    
+    // Draw footer
+    TodoRenderer.drawFooter(message)
+end function
+
+// Render add view
+TodoRenderer.renderAddView = function(data)
+    Canvas.clear(Colors.BG_PRIMARY)
+    
+    inputText = ""
+    message = "Enter todo text:"
+    if data.hasIndex("inputText") then inputText = data["inputText"]
+    if data.hasIndex("message") then message = data["message"]
+    
+    // Header
+    Canvas.fillRect(0, 0, TodoRenderer.WIDTH, TodoRenderer.HEADER_HEIGHT, Colors.BG_HEADER)
+    Canvas.drawText(TodoRenderer.PADDING, 10, "ADD TODO", Colors.ACCENT, TodoRenderer.FONT_TITLE)
+    
+    // Message
+    Canvas.drawText(TodoRenderer.PADDING, 60, message, Colors.TEXT_SECONDARY, TodoRenderer.FONT_NORMAL)
+    
+    // Input box
+    inputY = 90
+    Canvas.fillRect(TodoRenderer.PADDING, inputY, TodoRenderer.WIDTH - TodoRenderer.PADDING * 2, 36, Colors.BG_INPUT)
+    Canvas.drawRect(TodoRenderer.PADDING, inputY, TodoRenderer.WIDTH - TodoRenderer.PADDING * 2, 36, Colors.BORDER_ACCENT)
+    
+    // Input text with cursor
+    displayText = inputText + "_"
+    if displayText.len > 35 then
+        displayText = displayText[displayText.len - 35:]
+    end if
+    Canvas.drawText(TodoRenderer.PADDING + 8, inputY + 10, displayText, Colors.TEXT_PRIMARY, TodoRenderer.FONT_NORMAL)
+    
+    // Instructions
+    Canvas.drawText(TodoRenderer.PADDING, 150, "Type your todo text in the terminal", Colors.TEXT_MUTED, TodoRenderer.FONT_SMALL)
+    Canvas.drawText(TodoRenderer.PADDING, 170, "Press ENTER to save, or type cancel to go back", Colors.TEXT_MUTED, TodoRenderer.FONT_SMALL)
+end function
+
+// Render edit view
+TodoRenderer.renderEditView = function(data)
+    Canvas.clear(Colors.BG_PRIMARY)
+    
+    inputText = ""
+    message = "Edit todo:"
+    if data.hasIndex("inputText") then inputText = data["inputText"]
+    if data.hasIndex("message") then message = data["message"]
+    
+    // Header
+    Canvas.fillRect(0, 0, TodoRenderer.WIDTH, TodoRenderer.HEADER_HEIGHT, Colors.BG_HEADER)
+    Canvas.drawText(TodoRenderer.PADDING, 10, "EDIT TODO", Colors.ACCENT, TodoRenderer.FONT_TITLE)
+    
+    // Message
+    Canvas.drawText(TodoRenderer.PADDING, 60, message, Colors.TEXT_SECONDARY, TodoRenderer.FONT_NORMAL)
+    
+    // Input box
+    inputY = 90
+    Canvas.fillRect(TodoRenderer.PADDING, inputY, TodoRenderer.WIDTH - TodoRenderer.PADDING * 2, 36, Colors.BG_INPUT)
+    Canvas.drawRect(TodoRenderer.PADDING, inputY, TodoRenderer.WIDTH - TodoRenderer.PADDING * 2, 36, Colors.BORDER_ACCENT)
+    
+    // Input text with cursor
+    displayText = inputText + "_"
+    if displayText.len > 35 then
+        displayText = displayText[displayText.len - 35:]
+    end if
+    Canvas.drawText(TodoRenderer.PADDING + 8, inputY + 10, displayText, Colors.TEXT_PRIMARY, TodoRenderer.FONT_NORMAL)
+    
+    // Instructions
+    Canvas.drawText(TodoRenderer.PADDING, 150, "Type new text in the terminal", Colors.TEXT_MUTED, TodoRenderer.FONT_SMALL)
+    Canvas.drawText(TodoRenderer.PADDING, 170, "Press ENTER to save, or type cancel to go back", Colors.TEXT_MUTED, TodoRenderer.FONT_SMALL)
+end function
+
+// Render confirm dialog
+TodoRenderer.renderConfirmView = function(data)
+    Canvas.clear(Colors.BG_PRIMARY)
+    
+    title = "CONFIRM"
+    message = "Are you sure?"
+    if data.hasIndex("title") then title = data["title"]
+    if data.hasIndex("message") then message = data["message"]
+    
+    // Dialog box
+    boxX = 50
+    boxY = 80
+    boxW = TodoRenderer.WIDTH - 100
+    boxH = 120
+    
+    Canvas.fillRect(boxX, boxY, boxW, boxH, Colors.BG_SECONDARY)
+    Canvas.drawRect(boxX, boxY, boxW, boxH, Colors.ACCENT)
+    
+    // Title
+    Canvas.drawText(boxX + 20, boxY + 20, title, Colors.ACCENT, TodoRenderer.FONT_TITLE)
+    
+    // Message
+    Canvas.drawText(boxX + 20, boxY + 55, message, Colors.TEXT_PRIMARY, TodoRenderer.FONT_NORMAL)
+    
+    // Options
+    Canvas.drawText(boxX + 20, boxY + 85, "[Y] Yes, delete    [N] No, cancel", Colors.TEXT_SECONDARY, TodoRenderer.FONT_SMALL)
+end function
