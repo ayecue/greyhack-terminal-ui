@@ -5,6 +5,8 @@ using HarmonyLib;
 using GreyHackTerminalUI.Canvas;
 using GreyHackTerminalUI.Sound;
 using GreyHackTerminalUI.Patches;
+using GreyHackTerminalUI.Settings;
+using GreyHackTerminalUI.Utils;
 #if BEPINEX6
 using BepInEx.Unity.Mono;
 #endif
@@ -26,13 +28,18 @@ namespace GreyHackTerminalUI
 
             Logger.LogDebug($"Plugin {PluginInfo.PLUGIN_GUID} v{PluginInfo.PLUGIN_VERSION} is loading...");
 
+            // Initialize settings first
+            PluginSettings.Initialize(Config, Logger);
+
             // Initialize Harmony
             Harmony = new Harmony(PluginInfo.PLUGIN_GUID);
 
             // Initialize components
             TerminalPatches.Initialize(Logger);
+            SettingsWindowPatch.Initialize(Logger);
             CanvasManager.Initialize(Logger);
             SoundManager.Initialize(Logger);
+            GameThemeHelper.Initialize(Logger);
 
             // Apply all patches
             try
@@ -46,6 +53,19 @@ namespace GreyHackTerminalUI
             }
 
             Logger.LogDebug($"Plugin {PluginInfo.PLUGIN_GUID} is loaded!");
+        }
+        
+        void Start()
+        {
+            // Initialize the settings window after the game has started
+            try
+            {
+                Settings.SettingsWindow.Create(Logger);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError($"Failed to initialize settings window: {ex}");
+            }
         }
 
         void OnDestroy()

@@ -17,7 +17,7 @@ namespace GreyHackTerminalUI.Patches
 
         [HarmonyPatch(typeof(PlayerClientMethods), nameof(PlayerClientMethods.PrintSentClientRpc))]
         [HarmonyPrefix]
-        public static bool PrintSentClientRpc_Prefix(
+        public static bool Prefix_PrintSentClientRpc(
             PlayerClientMethods __instance,
             ref byte[] zipOutput,
             bool replaceText,
@@ -70,7 +70,7 @@ namespace GreyHackTerminalUI.Patches
 
         [HarmonyPatch(typeof(PlayerClientMethods), nameof(PlayerClientMethods.CloseProgramClientRpc))]
         [HarmonyPostfix]
-        public static void CloseProgramClientRpc_Postfix(int PID, byte[] zipProcs, bool isScript)
+        public static void Postfix_CloseProgramClientRpc(int PID, byte[] zipProcs, bool isScript)
         {
             CanvasManager.Instance.DestroyWindow(PID);
         }

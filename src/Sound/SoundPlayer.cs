@@ -1,33 +1,35 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using GreyHackTerminalUI.Settings;
 
 namespace GreyHackTerminalUI.Sound
 {
     public class SoundPlayer : MonoBehaviour
     {
         private List<MidiNote> _notes = new List<MidiNote>();
-        private int _currentNoteIndex = 0;
-        private float _currentNoteTime = 0f;
         private bool _isPlaying = false;
         private bool _loop = false;
         private AudioSource _audioSource;
+        private AudioClip _generatedClip;
+        private bool _needsRegenerate = true;
         
         private const int SAMPLE_RATE = 44100;
-        private const int MAX_NOTES = 1000; // Limit number of notes to prevent abuse
-        
-        private float _phase = 0f;
-        private float _currentFrequency = 0f;
-        private float _currentVolume = 0f;
+        private const int MAX_NOTES = 1000;
+        private const float MAX_DURATION = 30f; // Max 30 seconds per sound
         
         public int TerminalPID { get; set; }
-        public bool IsPlaying => _isPlaying;
+        public bool IsPlaying => _isPlaying && (_audioSource?.isPlaying ?? false);
         public bool Loop 
         { 
             get => _loop; 
             set 
             {
-                _loop = value; 
+                _loop = value;
+                if (_audioSource != null)
+                {
+                    _audioSource.loop = value;
+                }
             } 
         }
         
@@ -35,8 +37,31 @@ namespace GreyHackTerminalUI.Sound
         {
             _audioSource = gameObject.AddComponent<AudioSource>();
             _audioSource.playOnAwake = false;
-            _audioSource.loop = true;
-            _audioSource.volume = 1f;
+            _audioSource.loop = false;
+            _audioSource.spatialBlend = 0f; // 2D sound
+            _audioSource.volume = PluginSettings.SoundVolume?.Value ?? 1f;
+            
+            // Subscribe to volume changes
+            PluginSettings.OnSoundVolumeChanged += OnVolumeChanged;
+        }
+        
+        private void OnDestroy()
+        {
+            PluginSettings.OnSoundVolumeChanged -= OnVolumeChanged;
+            Stop();
+            if (_generatedClip != null)
+            {
+                Destroy(_generatedClip);
+                _generatedClip = null;
+            }
+        }
+        
+        private void OnVolumeChanged(float volume)
+        {
+            if (_audioSource != null)
+            {
+                _audioSource.volume = volume;
+            }
         }
         
         public void AddNote(int pitch, float duration, float velocity)
@@ -47,152 +72,190 @@ namespace GreyHackTerminalUI.Sound
                 return;
             }
             
+            // Clamp values to reasonable ranges
+            pitch = Mathf.Clamp(pitch, 0, 127);
+            duration = Mathf.Clamp(duration, 0.001f, 10f);
+            velocity = Mathf.Clamp01(velocity);
+            
             _notes.Add(new MidiNote(pitch, duration, velocity));
+            _needsRegenerate = true;
         }
         
         public void Clear()
         {
             Stop();
             _notes.Clear();
+            _needsRegenerate = true;
+            
+            // Clean up generated clip
+            if (_generatedClip != null)
+            {
+                Destroy(_generatedClip);
+                _generatedClip = null;
+            }
         }
         
         public void Play()
         {
+            // Check if sound is enabled
+            if (PluginSettings.SoundEnabled != null && !PluginSettings.SoundEnabled.Value)
+            {
+                return;
+            }
+            
             if (_notes.Count == 0)
             {
                 Debug.LogWarning($"[SoundPlayer] Terminal {TerminalPID} has no notes to play");
                 return;
             }
             
-            // Preserve loop state when restarting
-            bool preserveLoop = _loop;
-            Stop();
-            _loop = preserveLoop;
+            // Stop any current playback
+            if (_audioSource != null && _audioSource.isPlaying)
+            {
+                _audioSource.Stop();
+            }
             
-            _currentNoteIndex = 0;
-            _currentNoteTime = 0f;
-            _isPlaying = true;
-            _phase = 0f;
+            // Generate the audio clip if needed
+            if (_needsRegenerate || _generatedClip == null)
+            {
+                GenerateAudioClip();
+                _needsRegenerate = false;
+            }
             
-            // Ensure audio source is initialized
+            if (_generatedClip == null)
+            {
+                Debug.LogError($"[SoundPlayer] Failed to generate audio clip");
+                return;
+            }
+            
+            // Ensure audio source exists
             if (_audioSource == null)
             {
                 _audioSource = gameObject.AddComponent<AudioSource>();
                 _audioSource.playOnAwake = false;
-                _audioSource.loop = true;
-                _audioSource.volume = 1f;
+                _audioSource.spatialBlend = 0f;
             }
             
-            // Start the audio clip
-            if (!_audioSource.isPlaying)
-            {
-                // Create a longer streaming clip (10 seconds) to accommodate longer songs
-                _audioSource.clip = AudioClip.Create("GeneratedSound", SAMPLE_RATE * 10, 1, SAMPLE_RATE, true, OnAudioRead);
-                _audioSource.Play();
-            }
+            _audioSource.clip = _generatedClip;
+            _audioSource.loop = _loop;
+            _audioSource.volume = PluginSettings.SoundVolume?.Value ?? 1f;
+            _audioSource.Play();
+            _isPlaying = true;
         }
         
         public void Stop()
         {
             _isPlaying = false;
-            _loop = false;
-            _audioSource.Stop();
-            _currentVolume = 0f;
-            _currentFrequency = 0f;
+            if (_audioSource != null)
+            {
+                _audioSource.Stop();
+            }
+        }
+
+        private void GenerateAudioClip()
+        {
+            if (_notes.Count == 0)
+                return;
+            
+            // Calculate total duration
+            float totalDuration = 0f;
+            foreach (var note in _notes)
+            {
+                totalDuration += note.Duration;
+            }
+            
+            // Clamp to max duration
+            totalDuration = Mathf.Min(totalDuration, MAX_DURATION);
+            
+            int totalSamples = Mathf.CeilToInt(totalDuration * SAMPLE_RATE);
+            if (totalSamples <= 0)
+                return;
+            
+            // Clean up old clip
+            if (_generatedClip != null)
+            {
+                Destroy(_generatedClip);
+            }
+            
+            // Generate audio data
+            float[] samples = new float[totalSamples];
+            GenerateSamples(samples);
+            
+            // Create the audio clip
+            _generatedClip = AudioClip.Create(
+                $"Sound_{TerminalPID}_{GetHashCode()}",
+                totalSamples,
+                1, // Mono
+                SAMPLE_RATE,
+                false // Not streaming - this is key for reliability
+            );
+            
+            _generatedClip.SetData(samples, 0);
+        }
+
+        private void GenerateSamples(float[] samples)
+        {
+            int sampleIndex = 0;
+            float phase = 0f;
+            
+            foreach (var note in _notes)
+            {
+                float frequency = note.GetFrequency();
+                float velocity = note.Velocity;
+                int noteSamples = Mathf.CeilToInt(note.Duration * SAMPLE_RATE);
+                
+                // Attack and release envelope
+                int attackSamples = Mathf.Min(noteSamples / 10, 441); // ~10ms attack
+                int releaseSamples = Mathf.Min(noteSamples / 4, 4410); // ~100ms release
+                
+                for (int i = 0; i < noteSamples && sampleIndex < samples.Length; i++, sampleIndex++)
+                {
+                    // Calculate envelope
+                    float envelope = 1f;
+                    if (i < attackSamples)
+                    {
+                        envelope = (float)i / attackSamples;
+                    }
+                    else if (i > noteSamples - releaseSamples)
+                    {
+                        envelope = (float)(noteSamples - i) / releaseSamples;
+                    }
+                    
+                    // Generate waveform (mix of sine and harmonics for richer sound)
+                    float sample = 0f;
+                    
+                    // Fundamental sine wave
+                    sample += Mathf.Sin(phase) * 0.5f;
+                    
+                    // Add some harmonics for richness
+                    sample += Mathf.Sin(phase * 2f) * 0.2f; // 2nd harmonic
+                    sample += Mathf.Sin(phase * 3f) * 0.1f; // 3rd harmonic
+                    
+                    // Add slight triangle wave component for brightness
+                    float trianglePhase = (phase % (2f * Mathf.PI)) / Mathf.PI - 1f;
+                    sample += (2f * Mathf.Abs(trianglePhase) - 1f) * 0.1f;
+                    
+                    // Apply envelope and velocity
+                    samples[sampleIndex] = sample * envelope * velocity * 0.5f;
+                    
+                    // Advance phase
+                    phase += 2f * Mathf.PI * frequency / SAMPLE_RATE;
+                    
+                    // Keep phase in reasonable range to prevent precision issues
+                    if (phase > 2f * Mathf.PI * 1000f)
+                    {
+                        phase -= 2f * Mathf.PI * 1000f;
+                    }
+                }
+            }
         }
         
         private void Update()
         {
-            if (!_isPlaying || _notes.Count == 0)
-                return;
-            
-            _currentNoteTime += Time.deltaTime;
-            
-            // Check if current note is finished
-            if (_currentNoteIndex < _notes.Count)
+            // Update playing state
+            if (_isPlaying && _audioSource != null && !_audioSource.isPlaying && !_loop)
             {
-                var currentNote = _notes[_currentNoteIndex];
-                if (_currentNoteTime >= currentNote.Duration)
-                {
-                    _currentNoteIndex++;
-                    _currentNoteTime = 0f;
-
-                    // If we've played all notes
-                    if (_currentNoteIndex >= _notes.Count)
-                    {
-                        if (_loop)
-                        {
-                            // Restart from beginning
-                            _currentNoteIndex = 0;
-                            _currentNoteTime = 0f;
-                        }
-                        else
-                        {
-                            Stop();
-                            return;
-                        }
-                    }
-                }
-            }
-        }
-        
-        private void OnAudioRead(float[] data)
-        {
-            if (!_isPlaying)
-            {
-                // Fill with silence
-                for (int i = 0; i < data.Length; i++)
-                {
-                    data[i] = 0f;
-                }
-                return;
-            }
-            
-            // Handle loop restart if we've reached the end
-            if (_currentNoteIndex >= _notes.Count)
-            {
-                if (_loop && _notes.Count > 0)
-                {
-                    _currentNoteIndex = 0;
-                    _currentNoteTime = 0f;
-                }
-                else
-                {
-                    // Fill with silence
-                    for (int i = 0; i < data.Length; i++)
-                    {
-                        data[i] = 0f;
-                    }
-                    return;
-                }
-            }
-            
-            var currentNote = _notes[_currentNoteIndex];
-            _currentFrequency = currentNote.GetFrequency();
-            _currentVolume = currentNote.Velocity;
-            
-            float increment = _currentFrequency * 2f * Mathf.PI / SAMPLE_RATE;
-            
-            for (int i = 0; i < data.Length; i++)
-            {
-                // Generate a simple sine wave for the tone
-                data[i] = Mathf.Sin(_phase) * _currentVolume * 0.5f;
-                _phase += increment;
-                
-                // Wrap phase to prevent float precision issues
-                if (_phase > 2f * Mathf.PI)
-                {
-                    _phase -= 2f * Mathf.PI;
-                }
-            }
-        }
-        
-        private void OnDestroy()
-        {
-            Stop();
-            if (_audioSource != null && _audioSource.clip != null)
-            {
-                Destroy(_audioSource.clip);
+                _isPlaying = false;
             }
         }
     }

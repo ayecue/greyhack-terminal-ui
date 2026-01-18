@@ -15,7 +15,8 @@ namespace GreyHackTerminalUI.Canvas
         private CanvasWindow _window;
         private VirtualMachine _vm;
         private VMContext _vmContext;
-        private List<Token> _accumulatedTokens = new List<Token>();
+        private Queue<List<Token>> _pendingBlocks = new Queue<List<Token>>();
+        private readonly object _tokensLock = new object();
         
         // Execution state - per terminal to prevent interference
         private bool _isExecuting = false;
@@ -28,7 +29,16 @@ namespace GreyHackTerminalUI.Canvas
         public int TerminalPID => _terminalPID;
         public CanvasWindow Window => _window;
         public bool HasVisibleWindow => _hasVisibleWindow;
-        public bool HasPendingTokens => _accumulatedTokens.Count > 0;
+        public bool HasPendingTokens 
+        { 
+            get 
+            { 
+                lock (_tokensLock) 
+                { 
+                    return _pendingBlocks.Count > 0; 
+                } 
+            } 
+        }
         
         public TerminalContext(int terminalPID, IntrinsicRegistry intrinsics, ManualLogSource logger)
         {
@@ -45,7 +55,7 @@ namespace GreyHackTerminalUI.Canvas
             _vmContext.SetInternal("terminalPID", terminalPID);
         }
 
-        public CanvasWindow GetOrCreateWindow(Transform parent)
+        public CanvasWindow GetOrCreateWindow(RectTransform parent)
         {
             if (_window != null)
                 return _window;
@@ -57,21 +67,14 @@ namespace GreyHackTerminalUI.Canvas
             return _window;
         }
           
-        public bool AccumulateTokens(List<Token> tokens, bool replaceExisting = true)
+        public void AccumulateTokens(List<Token> tokens)
         {
-            if (_isExecuting)
+            // Queue each block separately - they must be parsed independently
+            // This ensures sound commands aren't lost when new frames arrive
+            lock (_tokensLock)
             {
-                _logger?.LogDebug($"[TerminalContext] Ignoring tokens while executing for terminal {_terminalPID}");
-                return false;
+                _pendingBlocks.Enqueue(tokens);
             }
-            
-            if (replaceExisting && _accumulatedTokens.Count > 0)
-            {
-                _accumulatedTokens.Clear();
-            }
-            
-            _accumulatedTokens.AddRange(tokens);
-            return true;
         }
         
         public void MarkWindowVisible()
@@ -81,7 +84,14 @@ namespace GreyHackTerminalUI.Canvas
         
         public bool ShouldExecute(float currentTime)
         {
-            if (_accumulatedTokens.Count == 0)
+            lock (_tokensLock)
+            {
+                if (_pendingBlocks.Count == 0)
+                    return false;
+            }
+            
+            // Don't start a new execution if one is already running
+            if (_isExecuting)
                 return false;
             
             // First frame should execute immediately
@@ -93,27 +103,23 @@ namespace GreyHackTerminalUI.Canvas
 
         public void Execute()
         {
-            if (_accumulatedTokens.Count == 0)
-                return;
-            
-            // Take the tokens and clear
-            var tokens = _accumulatedTokens;
-            _accumulatedTokens = new List<Token>();
+            // Take all pending blocks atomically
+            List<List<Token>> blocksToExecute;
+            lock (_tokensLock)
+            {
+                if (_pendingBlocks.Count == 0)
+                    return;
+                
+                // Take all pending blocks
+                blocksToExecute = new List<List<Token>>(_pendingBlocks);
+                _pendingBlocks.Clear();
+            }
             
             _isExecuting = true;
             _lastExecuteTime = Time.time;
             
             try
             {
-                // Compile
-                var parser = new Parser();
-                var compiler = new Compiler();
-                var ast = parser.Parse(tokens);
-                var chunk = compiler.Compile(ast);
-                
-                if (chunk == null)
-                    return;
-                
                 // Ensure window exists
                 if (_window == null)
                 {
@@ -121,15 +127,31 @@ namespace GreyHackTerminalUI.Canvas
                     return;
                 }
                 
-                // Stop any previous execution
-                _vm.Stop();
+                var parser = new Parser();
+                var compiler = new Compiler();
                 
-                // Execute
-                var result = _vm.Execute(chunk, _vmContext);
-                
-                if (result.Error != null)
+                // Execute each block separately - they are independent programs
+                foreach (var tokens in blocksToExecute)
                 {
-                    _logger?.LogError($"[TerminalContext] VM error for terminal {_terminalPID}: {result.Error}");
+                    try
+                    {
+                        var ast = parser.Parse(tokens);
+                        var chunk = compiler.Compile(ast);
+                        
+                        if (chunk == null)
+                            continue;
+                        
+                        var result = _vm.Execute(chunk, _vmContext);
+                        
+                        if (result.Error != null)
+                        {
+                            _logger?.LogError($"[TerminalContext] VM error for terminal {_terminalPID}: {result.Error}");
+                        }
+                    }
+                    catch (System.Exception ex)
+                    {
+                        _logger?.LogError($"[TerminalContext] Block execution error: {ex.Message}");
+                    }
                 }
             }
             catch (System.Exception ex)
@@ -144,11 +166,14 @@ namespace GreyHackTerminalUI.Canvas
         
         public void Destroy()
         {
-            _accumulatedTokens.Clear();
+            lock (_tokensLock)
+            {
+                _pendingBlocks.Clear();
+            }
             
             if (_window != null)
             {
-                Object.Destroy(_window.gameObject);
+                _window.Destroy();
                 _window = null;
             }
             

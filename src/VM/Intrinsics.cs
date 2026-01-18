@@ -148,9 +148,14 @@ namespace GreyHackTerminalUI.VM
                 var window = GetCanvasWindow(ctx);
                 if (window != null)
                 {
+                    Debug.Log($"[Intrinsics] Canvas.show() called, window exists for terminal {window.TerminalPID}");
                     window.Show();
                     // Mark this terminal as having a visible window
                     CanvasManager.Instance?.MarkWindowVisible(window.TerminalPID);
+                }
+                else
+                {
+                    Debug.LogWarning("[Intrinsics] Canvas.show() called but window is null");
                 }
                 return null;
             };

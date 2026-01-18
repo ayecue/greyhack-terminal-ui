@@ -4,7 +4,9 @@ using UnityEngine;
 using BepInEx.Logging;
 using GreyHackTerminalUI.VM;
 using GreyHackTerminalUI.Sound;
+using GreyHackTerminalUI.Settings;
 using HarmonyLib;
+using UI.Dialogs;
 
 namespace GreyHackTerminalUI.Canvas
 {
@@ -55,11 +57,27 @@ namespace GreyHackTerminalUI.Canvas
                 _instance = null;
         }
 
-        private Transform GetOrCreateParentCanvas()
+        private RectTransform GetOrCreateParentCanvas()
         {
             if (_parentCanvas != null)
-                return _parentCanvas;
+                return _parentCanvas as RectTransform;
 
+            // Use the game's desktop as parent for native window integration
+            var taskBar = Object.FindObjectOfType<uDialog_TaskBar>();
+            if (taskBar != null)
+            {
+                _parentCanvas = taskBar.transform.parent;
+                return _parentCanvas as RectTransform;
+            }
+
+            var desktop = Object.FindObjectOfType<DesktopFinder>();
+            if (desktop != null)
+            {
+                _parentCanvas = desktop.transform;
+                return _parentCanvas as RectTransform;
+            }
+
+            // Fallback: create our own canvas if desktop not available
             var canvasGO = new GameObject("CanvasManagerCanvas");
             var canvas = canvasGO.AddComponent<UnityEngine.Canvas>();
             
@@ -70,7 +88,7 @@ namespace GreyHackTerminalUI.Canvas
             DontDestroyOnLoad(canvasGO);
             _parentCanvas = canvasGO.transform;
 
-            return _parentCanvas;
+            return _parentCanvas as RectTransform;
         }
 
         public string ProcessOutput(string output, int terminalPID)
@@ -81,10 +99,16 @@ namespace GreyHackTerminalUI.Canvas
             if (!output.Contains(Lexer.BLOCK_START))
                 return output;
 
+            // Check if canvas is enabled in settings
+            if (PluginSettings.CanvasEnabled != null && !PluginSettings.CanvasEnabled.Value)
+            {
+                // Strip UI blocks but don't process them
+                return StripUIBlocks(output);
+            }
+
             var context = GetOrCreateContext(terminalPID);
             // Parse all UI blocks
             var lexer = new Lexer(output);
-            int blockCount = 0;
 
             try
             {
@@ -94,8 +118,10 @@ namespace GreyHackTerminalUI.Canvas
                     if (tokens == null)
                         break;
 
-                    context.AccumulateTokens(tokens, replaceExisting: blockCount == 0);
-                    blockCount++;
+                    // Always append - never replace. This prevents sound commands
+                    // from being swallowed when new frames arrive before execution.
+                    // Scripts use Canvas.clear() to reset visual state anyway.
+                    context.AccumulateTokens(tokens);
                 }
 
                 if (!context.HasVisibleWindow && context.HasPendingTokens)
