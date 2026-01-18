@@ -1,0 +1,138 @@
+// =============================================================================
+// Raycast FPS: Sound Effects
+// =============================================================================
+
+Sounds = {}
+
+// Initialize all sound effects
+Sounds.init = function()
+    ui = ""
+    
+    // Gunshot - sharp attack, quick decay
+    ui = ui + "var gunshot = Sound.create(""gunshot"")" + char(10)
+    ui = ui + "gunshot.clear()" + char(10)
+    ui = ui + "gunshot.addNote(45, 0.02, 1.0)" + char(10)
+    ui = ui + "gunshot.addNote(72, 0.03, 0.9)" + char(10)
+    ui = ui + "gunshot.addNote(55, 0.02, 0.7)" + char(10)
+    ui = ui + "gunshot.addNote(40, 0.05, 0.4)" + char(10)
+    
+    // Enemy hit - meaty thud
+    ui = ui + "var enemyHit = Sound.create(""enemyHit"")" + char(10)
+    ui = ui + "enemyHit.clear()" + char(10)
+    ui = ui + "enemyHit.addNote(50, 0.05, 0.8)" + char(10)
+    ui = ui + "enemyHit.addNote(45, 0.04, 0.6)" + char(10)
+    ui = ui + "enemyHit.addNote(40, 0.06, 0.4)" + char(10)
+    
+    // Enemy death - descending tone
+    ui = ui + "var enemyDeath = Sound.create(""enemyDeath"")" + char(10)
+    ui = ui + "enemyDeath.clear()" + char(10)
+    ui = ui + "enemyDeath.addNote(60, 0.08, 0.9)" + char(10)
+    ui = ui + "enemyDeath.addNote(55, 0.08, 0.7)" + char(10)
+    ui = ui + "enemyDeath.addNote(48, 0.1, 0.6)" + char(10)
+    ui = ui + "enemyDeath.addNote(40, 0.15, 0.4)" + char(10)
+    ui = ui + "enemyDeath.addNote(32, 0.2, 0.2)" + char(10)
+    
+    // Player hurt - dissonant sting
+    ui = ui + "var playerHurt = Sound.create(""playerHurt"")" + char(10)
+    ui = ui + "playerHurt.clear()" + char(10)
+    ui = ui + "playerHurt.addNote(70, 0.03, 1.0)" + char(10)
+    ui = ui + "playerHurt.addNote(65, 0.03, 0.9)" + char(10)
+    ui = ui + "playerHurt.addNote(58, 0.05, 0.7)" + char(10)
+    ui = ui + "playerHurt.addNote(50, 0.08, 0.5)" + char(10)
+    
+    // Reload - mechanical clicks
+    ui = ui + "var reload = Sound.create(""reload"")" + char(10)
+    ui = ui + "reload.clear()" + char(10)
+    ui = ui + "reload.addNote(80, 0.02, 0.6)" + char(10)
+    ui = ui + "reload.addNote(85, 0.02, 0.7)" + char(10)
+    ui = ui + "reload.addNote(75, 0.03, 0.8)" + char(10)
+    
+    // Empty clip - dry click
+    ui = ui + "var emptyClip = Sound.create(""emptyClip"")" + char(10)
+    ui = ui + "emptyClip.clear()" + char(10)
+    ui = ui + "emptyClip.addNote(90, 0.02, 0.5)" + char(10)
+    ui = ui + "emptyClip.addNote(85, 0.02, 0.3)" + char(10)
+    
+    // Level complete - ascending fanfare
+    ui = ui + "var levelComplete = Sound.create(""levelComplete"")" + char(10)
+    ui = ui + "levelComplete.clear()" + char(10)
+    ui = ui + "levelComplete.addNote(60, 0.12, 0.8)" + char(10)
+    ui = ui + "levelComplete.addNote(64, 0.12, 0.8)" + char(10)
+    ui = ui + "levelComplete.addNote(67, 0.12, 0.8)" + char(10)
+    ui = ui + "levelComplete.addNote(72, 0.25, 1.0)" + char(10)
+    
+    // Game over - sad descend
+    ui = ui + "var gameOver = Sound.create(""gameOver"")" + char(10)
+    ui = ui + "gameOver.clear()" + char(10)
+    ui = ui + "gameOver.addNote(55, 0.2, 0.7)" + char(10)
+    ui = ui + "gameOver.addNote(52, 0.2, 0.6)" + char(10)
+    ui = ui + "gameOver.addNote(48, 0.2, 0.5)" + char(10)
+    ui = ui + "gameOver.addNote(45, 0.4, 0.4)" + char(10)
+    
+    print("#UI{" + ui + "}")
+end function
+
+// Play sound effects - each creates the sound fresh and plays it
+Sounds.playGunshot = function()
+    nl = char(10)
+    ui = "var s = Sound.get(""gunshot"")" + nl
+    ui = ui + "s.stop()" + nl
+    ui = ui + "s.play()" + nl
+    print("#UI{" + ui + "}")
+end function
+
+Sounds.playEnemyHit = function()
+    nl = char(10)
+    ui = "var s = Sound.get(""enemyHit"")" + nl
+    ui = ui + "s.stop()" + nl
+    ui = ui + "s.play()" + nl
+    print("#UI{" + ui + "}")
+end function
+
+Sounds.playEnemyDeath = function()
+    nl = char(10)
+    ui = "var s = Sound.get(""enemyDeath"")" + nl
+    ui = ui + "s.stop()" + nl
+    ui = ui + "s.play()" + nl
+    print("#UI{" + ui + "}")
+end function
+
+Sounds.playPlayerHurt = function()
+    nl = char(10)
+    ui = "var s = Sound.get(""playerHurt"")" + nl
+    ui = ui + "s.stop()" + nl
+    ui = ui + "s.play()" + nl
+    print("#UI{" + ui + "}")
+end function
+
+Sounds.playReload = function()
+    nl = char(10)
+    ui = "var s = Sound.get(""reload"")" + nl
+    ui = ui + "s.stop()" + nl
+    ui = ui + "s.play()" + nl
+    print("#UI{" + ui + "}")
+end function
+
+Sounds.playEmptyClip = function()
+    nl = char(10)
+    ui = "var s = Sound.get(""emptyClip"")" + nl
+    ui = ui + "s.stop()" + nl
+    ui = ui + "s.play()" + nl
+    print("#UI{" + ui + "}")
+end function
+
+Sounds.playLevelComplete = function()
+    nl = char(10)
+    ui = "var s = Sound.get(""levelComplete"")" + nl
+    ui = ui + "s.stop()" + nl
+    ui = ui + "s.play()" + nl
+    print("#UI{" + ui + "}")
+end function
+
+Sounds.playGameOver = function()
+    nl = char(10)
+    ui = "var s = Sound.get(""gameOver"")" + nl
+    ui = ui + "s.stop()" + nl
+    ui = ui + "s.play()" + nl
+    print("#UI{" + ui + "}")
+end function

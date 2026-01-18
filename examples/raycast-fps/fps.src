@@ -21,6 +21,7 @@ import_code("libraries/player.src")
 import_code("libraries/enemies.src")
 import_code("libraries/gamestate.src")
 import_code("libraries/renderer.src")
+import_code("libraries/sounds.src")
 
 // =====================================================
 // DISPLAY MODE - Runs game loop and renders
@@ -33,6 +34,7 @@ runDisplayMode = function()
     
     // Initialize systems
     Renderer.init()
+    Sounds.init()
     wait(0.5)  // Give canvas time to initialize
     
     GameState.loadHighScore()
@@ -84,12 +86,14 @@ runDisplayMode = function()
             // Check for death
             if Player.isDead then
                 GameState.saveHighScore()
+                Sounds.playGameOver()
                 gameMode = "gameover"
                 InputState.clear()
             end if
             
             // Check for level complete
             if GameState.isLevelComplete() then
+                Sounds.playLevelComplete()
                 gameMode = "levelcomplete"
                 levelCompleteTimer = 0
                 InputState.clear()

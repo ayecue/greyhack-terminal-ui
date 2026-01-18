@@ -169,6 +169,18 @@ If a script exceeds a limit, execution is aborted and an error is logged to BepI
 
 ---
 
+## Examples
+
+The `examples` directory contains complete game implementations showcasing the canvas API:
+
+- **[todo-app](examples/todo-app)** - Simple terminal-based todo list demonstrating basic UI layout and state persistence
+- **[snake-game](examples/snake-game)** - Classic snake game with real-time rendering and dual-terminal input system
+- **[raycast-fps](examples/raycast-fps)** - 2.5D first-person shooter with raycasting engine, enemy AI, and smooth movement controls
+
+Each example includes its own README with detailed setup instructions and implementation notes.
+
+---
+
 ## Building From Source
 
 Project layout (high level):

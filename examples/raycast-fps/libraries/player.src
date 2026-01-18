@@ -201,13 +201,19 @@ Player.update = function(input, deltaTime)
     end if
     
     // Shooting
-    if input.shoot and Player.shootCooldown <= 0 and Player.ammo > 0 then
-        Player.shoot()
+    if input.shoot and Player.shootCooldown <= 0 then
+        if Player.ammo > 0 then
+            Player.shoot()
+        else
+            Sounds.playEmptyClip()
+            Player.shootCooldown = 0.2  // Small cooldown for empty click
+        end if
     end if
     
     // Reload
-    if input.reload then
+    if input.reload and Player.ammo < Player.maxAmmo then
         Player.ammo = Player.maxAmmo
+        Sounds.playReload()
     end if
 end function
 
@@ -217,12 +223,17 @@ Player.shoot = function()
     Player.shootCooldown = Player.shootDelay
     Player.muzzleFlash = 0.1
     
+    Sounds.playGunshot()
+    
     hitEnemy = Enemies.checkHit(Player.x, Player.y, Player.angle)
     if hitEnemy != null then
         hitEnemy.health = hitEnemy.health - Player.damage
         if hitEnemy.health <= 0 then
             hitEnemy.isDead = true
             Player.score = Player.score + 100
+            Sounds.playEnemyDeath()
+        else
+            Sounds.playEnemyHit()
         end if
     end if
 end function
@@ -233,6 +244,7 @@ Player.takeDamage = function(amount)
     
     Player.health = Player.health - amount
     Player.damageFlash = 8  // Start damage visual effect
+    Sounds.playPlayerHurt()
     
     if Player.health <= 0 then
         Player.health = 0
