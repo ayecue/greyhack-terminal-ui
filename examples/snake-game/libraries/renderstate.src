@@ -1,0 +1,170 @@
+// =============================================================================
+// Snake Game: Render State Management
+// =============================================================================
+// Handles saving/loading render state to file for split execution
+
+RenderState = {}
+
+// File path for render state
+RenderState.STATE_FILE = "/root/snake_render.state"
+
+// State types
+RenderState.MODE_TITLE = "title"
+RenderState.MODE_PLAYING = "playing"
+RenderState.MODE_GAMEOVER = "gameover"
+RenderState.MODE_PAUSED = "paused"
+
+// Current render state data
+RenderState.mode = "title"
+RenderState.data = {}
+
+// Save render state to file
+RenderState.save = function()
+    computer = get_shell.host_computer
+    
+    content = self.mode + char(10)
+    content = content + self.serializeData()
+    
+    // Write to file
+    file = computer.File(self.STATE_FILE)
+    if file == null then
+        result = computer.touch("/root", "snake_render.state")
+        if typeof(result) == "string" then
+            print("Touch error: " + result)
+        end if
+        file = computer.File(self.STATE_FILE)
+    end if
+    
+    if file != null then
+        file.set_content(content)
+        yield
+    else
+        print("ERROR: Could not create state file!")
+    end if
+end function
+
+// Load render state from file
+RenderState.load = function()
+    computer = get_shell.host_computer
+    file = computer.File(self.STATE_FILE)
+    
+    if file == null then
+        self.mode = "title"
+        self.data = {}
+        return false
+    end if
+    
+    content = file.get_content
+    lines = content.split(char(10))
+    
+    if lines.len < 1 then return false
+    
+    self.mode = lines[0]
+    self.data = self.deserializeData(lines[1:])
+
+    return true
+end function
+
+// Serialize data to string
+RenderState.serializeData = function()
+    result = ""
+    for key in self.data.indexes
+        value = self.data[key]
+        result = result + key + "=" + str(value) + char(10)
+    end for
+    return result
+end function
+
+// Deserialize data from lines
+RenderState.deserializeData = function(lines)
+    data = {}
+    for line in lines
+        eqPos = line.indexOf("=")
+        if eqPos != null and eqPos > 0 then
+            parts = line.split("=")
+            key = parts[0]
+            // Join remaining parts in case value contains =
+            valueParts = []
+            i = 1
+            while i < parts.len
+                valueParts.push(parts[i])
+                i = i + 1
+            end while
+            value = valueParts.join("=")
+            
+            // Try to parse as number or boolean
+            if value == "true" then
+                data[key] = true
+            else if value == "false" then
+                data[key] = false
+            else if value.val != 0 or value == "0" then
+                data[key] = value.val
+            else
+                data[key] = value
+            end if
+        end if
+    end for
+    return data
+end function
+
+// Set title screen state
+RenderState.setTitle = function(highScore)
+    self.mode = self.MODE_TITLE
+    self.data = {}
+    self.data["highScore"] = highScore
+    self.save()
+end function
+
+// Set playing state
+RenderState.setPlaying = function(gameState)
+    self.mode = self.MODE_PLAYING
+    self.data = {}
+    self.data["score"] = gameState.score
+    self.data["highScore"] = gameState.highScore
+    self.data["direction"] = gameState.direction
+    self.data["foodX"] = gameState.foodX
+    self.data["foodY"] = gameState.foodY
+    self.data["snakeLen"] = gameState.snake.len
+    
+    // Serialize snake positions
+    i = 0
+    for segment in gameState.snake
+        self.data["snakeX" + i] = segment.x
+        self.data["snakeY" + i] = segment.y
+        i = i + 1
+    end for
+    
+    self.save()
+end function
+
+// Set game over state
+RenderState.setGameOver = function(score, highScore, isNewHighScore)
+    self.mode = self.MODE_GAMEOVER
+    self.data = {}
+    self.data["score"] = score
+    self.data["highScore"] = highScore
+    self.data["newHighScore"] = isNewHighScore
+    self.save()
+end function
+
+// Get snake from loaded data
+RenderState.getSnake = function()
+    snake = []
+    if not self.data.hasIndex("snakeLen") then return snake
+    
+    len = self.data["snakeLen"]
+    i = 0
+    while i < len
+        xKey = "snakeX" + i
+        yKey = "snakeY" + i
+        if self.data.hasIndex(xKey) and self.data.hasIndex(yKey) then
+            segment = {}
+            segment.x = self.data[xKey]
+            segment.y = self.data[yKey]
+            snake.push(segment)
+        end if
+        i = i + 1
+    end while
+    
+    return snake
+end function

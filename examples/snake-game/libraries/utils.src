@@ -1,0 +1,20 @@
+// =============================================================================
+// Snake Game: Utility Functions
+// =============================================================================
+
+roundNumber = function(num, places = 0)
+    factor = 10 ^ places
+    return round(num * factor) / factor
+end function
+
+// Clamp value between min and max
+clamp = function(value, minVal, maxVal)
+    if value < minVal then return minVal
+    if value > maxVal then return maxVal
+    return value
+end function
+
+// Random integer between min and max (inclusive)
+randInt = function(minVal, maxVal)
+    return floor(rnd * (maxVal - minVal + 1)) + minVal
+end function

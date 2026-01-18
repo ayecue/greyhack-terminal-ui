@@ -1,0 +1,34 @@
+// =============================================================================
+// Snake Game: Color Palette
+// =============================================================================
+
+Colors = {}
+
+// Base colors
+Colors.WHITE = "#FFFFFF"
+Colors.BLACK = "#000000"
+
+// Background - Dark green theme
+Colors.BG_PRIMARY = "#1a2f1a"
+Colors.BG_GRID = "#243524"
+Colors.BG_HEADER = "#0f1f0f"
+
+// Snake colors
+Colors.SNAKE_HEAD = "#00FF00"
+Colors.SNAKE_BODY = "#00CC00"
+Colors.SNAKE_BODY_ALT = "#009900"
+
+// Food color
+Colors.FOOD = "#FF4444"
+Colors.FOOD_GLOW = "#FF6666"
+
+// UI colors
+Colors.TEXT_PRIMARY = "#FFFFFF"
+Colors.TEXT_SECONDARY = "#AAFFAA"
+Colors.TEXT_MUTED = "#668866"
+Colors.TEXT_SCORE = "#FFFF00"
+Colors.TEXT_GAMEOVER = "#FF0000"
+
+// Border
+Colors.BORDER = "#00AA00"
+Colors.BORDER_DARK = "#006600"

@@ -1,0 +1,93 @@
+// =============================================================================
+// Snake Game: Input State
+// =============================================================================
+// Handles input communication between terminals via file
+// Uses a queue/buffer approach to prevent lost inputs
+
+InputState = {}
+
+// File path for input queue
+InputState.INPUT_FILE = "/root/snake_input.state"
+
+// Append input to queue (doesn't overwrite existing inputs)
+InputState.write = function(key)
+    computer = get_shell.host_computer
+    
+    file = computer.File("/root/snake_input.state")
+    if file == null then
+        computer.touch("/root", "snake_input.state")
+        file = computer.File("/root/snake_input.state")
+    end if
+    
+    if file == null then return
+    
+    existing = file.get_content
+    if existing == null then existing = ""
+    existing = existing.trim
+    
+    // Append to queue with separator (using ; instead of | to avoid regex issues)
+    if existing == "" then
+        file.set_content(key)
+    else
+        file.set_content(existing + ";" + key)
+    end if
+end function
+
+// Read all queued inputs and clear the file
+// Returns a list of commands in order
+InputState.readAll = function()
+    computer = get_shell.host_computer
+    file = computer.File("/root/snake_input.state")
+    
+    if file == null then
+        return []
+    end if
+    
+    content = file.get_content
+    if content == null then
+        return []
+    end if
+    content = content.trim
+    if content == "" then return []
+    
+    // Clear the file after reading
+    file.set_content("")
+    
+    // Split by separator (using ; to avoid regex issues with |)
+    return content.split(";")
+end function
+
+// Simple read - returns the last valid command from the queue
+InputState.read = function()
+    commands = InputState.readAll()
+    
+    if commands.len == 0 then return ""
+    
+    lastDirection = ""
+    lastSpecial = ""
+    
+    // Process all queued commands
+    for cmd in commands
+        cmd = cmd.trim
+        if cmd == "up" or cmd == "down" or cmd == "left" or cmd == "right" then
+            lastDirection = cmd
+        else if cmd == "quit" or cmd == "restart" then
+            lastSpecial = cmd
+        end if
+    end for
+    
+    // Special commands take priority
+    if lastSpecial != "" then 
+        return lastSpecial
+    end if
+    return lastDirection
+end function
+
+// Clear input file
+InputState.clear = function()
+    computer = get_shell.host_computer
+    file = computer.File("/root/snake_input.state")
+    if file != null then
+        file.set_content("")
+    end if
+end function

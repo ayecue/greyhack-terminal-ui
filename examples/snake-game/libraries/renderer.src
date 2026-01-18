@@ -1,0 +1,218 @@
+// =============================================================================
+// Snake Game: Renderer
+// =============================================================================
+// Renders the snake game UI using the Canvas API
+
+import_code("colors.src")
+
+SnakeRenderer = {}
+
+// Canvas dimensions
+SnakeRenderer.WIDTH = 640
+SnakeRenderer.HEIGHT = 480
+
+// Grid settings (must match GameState)
+SnakeRenderer.GRID_WIDTH = 30
+SnakeRenderer.GRID_HEIGHT = 20
+SnakeRenderer.CELL_SIZE = 20
+
+// Layout
+SnakeRenderer.HEADER_HEIGHT = 40
+SnakeRenderer.GRID_OFFSET_X = 20
+SnakeRenderer.GRID_OFFSET_Y = 50
+
+// Draw the game grid background
+SnakeRenderer.drawGrid = function()
+    gridW = SnakeRenderer.GRID_WIDTH * SnakeRenderer.CELL_SIZE
+    gridH = SnakeRenderer.GRID_HEIGHT * SnakeRenderer.CELL_SIZE
+    
+    // Grid background
+    Canvas.fillRect(SnakeRenderer.GRID_OFFSET_X, SnakeRenderer.GRID_OFFSET_Y, gridW, gridH, Colors.BG_GRID)
+    
+    // Grid border
+    Canvas.drawRect(SnakeRenderer.GRID_OFFSET_X - 2, SnakeRenderer.GRID_OFFSET_Y - 2, gridW + 4, gridH + 4, Colors.BORDER)
+    Canvas.drawRect(SnakeRenderer.GRID_OFFSET_X - 1, SnakeRenderer.GRID_OFFSET_Y - 1, gridW + 2, gridH + 2, Colors.BORDER_DARK)
+end function
+
+// Draw the header with score
+SnakeRenderer.drawHeader = function(score, highScore)
+    // Background
+    Canvas.fillRect(0, 0, SnakeRenderer.WIDTH, SnakeRenderer.HEADER_HEIGHT, Colors.BG_HEADER)
+    
+    // Title
+    Canvas.drawText(20, 8, "SNAKE", Colors.SNAKE_HEAD, 24)
+    
+    // Score
+    Canvas.drawText(200, 12, "SCORE: " + str(score), Colors.TEXT_SCORE, 18)
+    
+    // High Score
+    Canvas.drawText(420, 12, "HIGH: " + str(highScore), Colors.TEXT_SECONDARY, 18)
+end function
+
+// Draw a single snake segment
+SnakeRenderer.drawSnakeSegment = function(x, y, isHead, index)
+    pixelX = SnakeRenderer.GRID_OFFSET_X + (x * SnakeRenderer.CELL_SIZE)
+    pixelY = SnakeRenderer.GRID_OFFSET_Y + (y * SnakeRenderer.CELL_SIZE)
+    
+    // Determine color
+    if isHead then
+        color = Colors.SNAKE_HEAD
+    else if index % 2 == 0 then
+        color = Colors.SNAKE_BODY
+    else
+        color = Colors.SNAKE_BODY_ALT
+    end if
+    
+    // Draw segment with small padding for visual separation
+    padding = 1
+    Canvas.fillRect(pixelX + padding, pixelY + padding, SnakeRenderer.CELL_SIZE - padding * 2, SnakeRenderer.CELL_SIZE - padding * 2, color)
+    
+    // Draw eyes on head
+    if isHead then
+        eyeSize = 3
+        eyeOffset = 4
+        Canvas.fillRect(pixelX + eyeOffset, pixelY + eyeOffset, eyeSize, eyeSize, Colors.BLACK)
+        Canvas.fillRect(pixelX + SnakeRenderer.CELL_SIZE - eyeOffset - eyeSize, pixelY + eyeOffset, eyeSize, eyeSize, Colors.BLACK)
+    end if
+end function
+
+// Draw food
+SnakeRenderer.drawFood = function(x, y)
+    pixelX = SnakeRenderer.GRID_OFFSET_X + (x * SnakeRenderer.CELL_SIZE)
+    pixelY = SnakeRenderer.GRID_OFFSET_Y + (y * SnakeRenderer.CELL_SIZE)
+    
+    // Draw food as a circle
+    centerX = pixelX + SnakeRenderer.CELL_SIZE / 2
+    centerY = pixelY + SnakeRenderer.CELL_SIZE / 2
+    radius = SnakeRenderer.CELL_SIZE / 2 - 2
+    
+    Canvas.fillCircle(centerX, centerY, radius, Colors.FOOD)
+    Canvas.fillCircle(centerX - 2, centerY - 2, radius / 3, Colors.FOOD_GLOW)
+end function
+
+// Draw controls hint
+SnakeRenderer.drawControls = function()
+    y = SnakeRenderer.HEIGHT - 25
+    Canvas.drawText(20, y, "WASD or Arrows: Move   R: Restart   Q: Quit", Colors.TEXT_MUTED, 14)
+end function
+
+// Render title screen
+SnakeRenderer.renderTitle = function(data)
+    Canvas.clear(Colors.BG_PRIMARY)
+    
+    highScore = 0
+    if data.hasIndex("highScore") then highScore = data["highScore"]
+    
+    // Title
+    Canvas.drawText(220, 120, "SNAKE", Colors.SNAKE_HEAD, 64)
+    
+    // Subtitle
+    Canvas.drawText(200, 200, "A Classic Game", Colors.TEXT_SECONDARY, 24)
+    
+    // High score
+    if highScore > 0 then
+        Canvas.drawText(230, 260, "High Score: " + str(highScore), Colors.TEXT_SCORE, 20)
+    end if
+    
+    // Instructions
+    Canvas.drawText(180, 320, "Press any direction key to start", Colors.TEXT_PRIMARY, 18)
+    Canvas.drawText(230, 360, "WASD or Arrow Keys", Colors.TEXT_MUTED, 16)
+    
+    // Draw a small snake decoration
+    SnakeRenderer.drawSnakeSegment(14, 19, true, 0)
+    SnakeRenderer.drawSnakeSegment(13, 19, false, 1)
+    SnakeRenderer.drawSnakeSegment(12, 19, false, 2)
+    SnakeRenderer.drawSnakeSegment(11, 19, false, 3)
+    SnakeRenderer.drawSnakeSegment(10, 19, false, 4)
+end function
+
+// Render playing state
+SnakeRenderer.renderPlaying = function(data)
+    Canvas.clear(Colors.BG_PRIMARY)
+    
+    score = 0
+    highScore = 0
+    foodX = 0
+    foodY = 0
+    
+    if data.hasIndex("score") then score = data["score"]
+    if data.hasIndex("highScore") then highScore = data["highScore"]
+    if data.hasIndex("foodX") then foodX = data["foodX"]
+    if data.hasIndex("foodY") then foodY = data["foodY"]
+    
+    // Draw header
+    SnakeRenderer.drawHeader(score, highScore)
+    
+    // Draw grid
+    SnakeRenderer.drawGrid()
+    
+    // Draw food
+    SnakeRenderer.drawFood(foodX, foodY)
+    
+    // Draw snake
+    snake = RenderState.getSnake()
+    i = 0
+    for segment in snake
+        isHead = (i == 0)
+        SnakeRenderer.drawSnakeSegment(segment.x, segment.y, isHead, i)
+        i = i + 1
+    end for
+    
+    // Draw controls
+    SnakeRenderer.drawControls()
+end function
+
+// Render playing state directly from GameState (for continuous game loop)
+SnakeRenderer.renderPlayingDirect = function(gameState)
+    Canvas.clear(Colors.BG_PRIMARY)
+    
+    // Draw header
+    SnakeRenderer.drawHeader(gameState.score, gameState.highScore)
+    
+    // Draw grid
+    SnakeRenderer.drawGrid()
+    
+    // Draw food
+    SnakeRenderer.drawFood(gameState.foodX, gameState.foodY)
+    
+    // Draw snake directly from GameState.snake array
+    i = 0
+    for segment in gameState.snake
+        isHead = (i == 0)
+        SnakeRenderer.drawSnakeSegment(segment.x, segment.y, isHead, i)
+        i = i + 1
+    end for
+    
+    // Draw controls
+    SnakeRenderer.drawControls()
+end function
+
+// Render game over screen
+SnakeRenderer.renderGameOver = function(data)
+    Canvas.clear(Colors.BG_PRIMARY)
+    
+    score = 0
+    highScore = 0
+    newHighScore = false
+    
+    if data.hasIndex("score") then score = data["score"]
+    if data.hasIndex("highScore") then highScore = data["highScore"]
+    if data.hasIndex("newHighScore") then newHighScore = data["newHighScore"]
+    
+    // Game Over text
+    Canvas.drawText(180, 140, "GAME OVER", Colors.TEXT_GAMEOVER, 48)
+    
+    // Score
+    Canvas.drawText(250, 220, "Score: " + str(score), Colors.TEXT_PRIMARY, 28)
+    
+    // High score message
+    if newHighScore then
+        Canvas.drawText(200, 270, "NEW HIGH SCORE!", Colors.TEXT_SCORE, 24)
+    else
+        Canvas.drawText(220, 270, "High Score: " + str(highScore), Colors.TEXT_SECONDARY, 20)
+    end if
+    
+    // Instructions
+    Canvas.drawText(200, 340, "Press R to play again", Colors.TEXT_PRIMARY, 20)
+    Canvas.drawText(230, 380, "Press Q to quit", Colors.TEXT_MUTED, 16)
+end function

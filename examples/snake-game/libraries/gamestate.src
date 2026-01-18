@@ -1,0 +1,213 @@
+// =============================================================================
+// Snake Game: Game State Management
+// =============================================================================
+// Manages the snake game logic and state
+
+GameState = {}
+
+// File path for high score
+GameState.HIGHSCORE_FILE = "/root/snake_highscore.dat"
+
+// Grid settings
+GameState.GRID_WIDTH = 30
+GameState.GRID_HEIGHT = 20
+GameState.CELL_SIZE = 20
+
+// Game state
+GameState.snake = []
+GameState.direction = "right"
+GameState.nextDirection = "right"
+GameState.foodX = 0
+GameState.foodY = 0
+GameState.score = 0
+GameState.highScore = 0
+GameState.gameOver = false
+GameState.started = false
+
+// Initialize game
+GameState.init = function()
+    self.loadHighScore()
+    self.reset()
+end function
+
+// Reset game for new round
+GameState.reset = function()
+    self.snake = []
+    self.direction = "right"
+    self.nextDirection = "right"
+    self.score = 0
+    self.gameOver = false
+    self.started = false
+    
+    // Start snake in middle of grid
+    startX = floor(self.GRID_WIDTH / 2)
+    startY = floor(self.GRID_HEIGHT / 2)
+    
+    // Create initial snake (3 segments)
+    self.snake.push({"x": startX, "y": startY})
+    self.snake.push({"x": startX - 1, "y": startY})
+    self.snake.push({"x": startX - 2, "y": startY})
+    
+    // Spawn first food
+    self.spawnFood()
+end function
+
+// Spawn food at random location
+GameState.spawnFood = function()
+    // Keep trying until we find a spot not occupied by snake
+    maxAttempts = 100
+    attempts = 0
+    
+    while attempts < maxAttempts
+        x = randInt(0, self.GRID_WIDTH - 1)
+        y = randInt(0, self.GRID_HEIGHT - 1)
+        
+        // Check if position is free
+        occupied = false
+        for segment in self.snake
+            if segment.x == x and segment.y == y then
+                occupied = true
+                break
+            end if
+        end for
+        
+        if not occupied then
+            self.foodX = x
+            self.foodY = y
+            return
+        end if
+        
+        attempts = attempts + 1
+    end while
+    
+    // Fallback: just place it somewhere
+    self.foodX = 0
+    self.foodY = 0
+end function
+
+// Set direction (validates to prevent 180 degree turns)
+GameState.setDirection = function(newDir)
+    // Can't reverse direction
+    if newDir == "up" and self.direction == "down" then return
+    if newDir == "down" and self.direction == "up" then return
+    if newDir == "left" and self.direction == "right" then return
+    if newDir == "right" and self.direction == "left" then return
+    
+    self.nextDirection = newDir
+end function
+
+// Update game state (called each tick)
+GameState.update = function()
+    if self.gameOver then return false
+    if not self.started then return false
+    
+    // Apply pending direction change
+    self.direction = self.nextDirection
+    
+    // Get current head position
+    head = self.snake[0]
+    newX = head.x
+    newY = head.y
+    
+    // Calculate new head position
+    if self.direction == "up" then
+        newY = newY - 1
+    else if self.direction == "down" then
+        newY = newY + 1
+    else if self.direction == "left" then
+        newX = newX - 1
+    else if self.direction == "right" then
+        newX = newX + 1
+    end if
+    
+    // Check wall collision
+    if newX < 0 or newX >= self.GRID_WIDTH or newY < 0 or newY >= self.GRID_HEIGHT then
+        self.gameOver = true
+        self.checkHighScore()
+        return false
+    end if
+    
+    // Check self collision (skip tail since it will move)
+    i = 0
+    while i < self.snake.len - 1
+        segment = self.snake[i]
+        if segment.x == newX and segment.y == newY then
+            self.gameOver = true
+            self.checkHighScore()
+            return false
+        end if
+        i = i + 1
+    end while
+    
+    // Create new head
+    newHead = {"x": newX, "y": newY}
+    
+    // Check if eating food
+    ateFood = (newX == self.foodX and newY == self.foodY)
+    
+    // Add new head
+    self.snake.insert(0, newHead)
+    
+    // Remove tail (unless we ate food)
+    if ateFood then
+        self.score = self.score + 10
+        self.spawnFood()
+    else
+        self.snake.pop()
+    end if
+    
+    return true
+end function
+
+// Start the game
+GameState.start = function()
+    self.started = true
+end function
+
+// Check and update high score
+GameState.checkHighScore = function()
+    if self.score > self.highScore then
+        self.highScore = self.score
+        self.saveHighScore()
+        return true
+    end if
+    return false
+end function
+
+// Load high score from file
+GameState.loadHighScore = function()
+    computer = get_shell.host_computer
+    file = computer.File(self.HIGHSCORE_FILE)
+    
+    if file == null then
+        self.highScore = 0
+        return
+    end if
+    
+    content = file.get_content
+    if content != null and content.len > 0 then
+        self.highScore = content.val
+    else
+        self.highScore = 0
+    end if
+end function
+
+// Save high score to file
+GameState.saveHighScore = function()
+    computer = get_shell.host_computer
+    
+    file = computer.File(self.HIGHSCORE_FILE)
+    if file == null then
+        computer.touch("/root", "snake_highscore.dat")
+        file = computer.File(self.HIGHSCORE_FILE)
+    end if
+    
+    if file != null then
+        file.set_content(str(self.highScore))
+    end if
+end function
+
+// Check if this is a new high score
+GameState.isNewHighScore = function()
+    return self.score > 0 and self.score >= self.highScore
+end function

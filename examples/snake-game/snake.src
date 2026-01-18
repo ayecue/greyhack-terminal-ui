@@ -1,0 +1,234 @@
+// =============================================================================
+// Snake Game - Main Entry Point
+// =============================================================================
+// A classic Snake game for Grey Hack
+// Uses greyhack-terminal-canvas mod for graphical UI
+// =============================================================================
+// Architecture: 
+//   - Display mode runs the game loop (logic + rendering)
+//   - Input mode captures keys and writes to file (non-blocking)
+// This allows the snake to move continuously without waiting for input!
+// =============================================================================
+// Run: snake display - Game mode (runs game loop and renders)
+// Run: snake input   - Input mode (captures keyboard input)
+// =============================================================================
+
+import_code("libraries/utils.src")
+import_code("libraries/colors.src")
+import_code("libraries/canvas.src")
+import_code("libraries/inputstate.src")
+import_code("libraries/gamestate.src")
+import_code("libraries/renderer.src")
+
+// =====================================================
+// DISPLAY MODE - Runs game loop and renders
+// =====================================================
+runDisplayMode = function()
+    // Initialize canvas
+    Canvas.init(640, 480)
+    
+    print("Snake - Game Mode")
+    print("Run 'snake input' in another terminal for controls")
+    print("")
+    
+    // Initialize game state
+    GameState.init()
+    InputState.clear()
+    
+    // Game state
+    gameMode = "title"  // title, playing, gameover
+    tickDelay = 0.12    // Time between snake moves
+    lastTick = time
+    
+    while true
+        // Read input from file (non-blocking)
+        key = InputState.read()
+        
+        // Debug: show what we read
+        if key != "" then
+            print("Read key: [" + key + "]")
+        end if
+        
+        if gameMode == "title" then
+            // Render title screen
+            SnakeRenderer.renderTitle({"highScore": GameState.highScore})
+            Canvas.render()
+            
+            // Check for direction key to start
+            if key == "up" or key == "down" or key == "left" or key == "right" then
+                print("Starting game with direction: " + key)
+                GameState.setDirection(key)
+                GameState.start()
+                gameMode = "playing"
+                lastTick = time
+            else if key == "quit" then
+                print("Goodbye!")
+                exit
+            end if
+            
+            wait(0.05)
+            
+        else if gameMode == "playing" then
+            // Handle direction input immediately
+            if key == "up" or key == "down" or key == "left" or key == "right" then
+                GameState.setDirection(key)
+            else if key == "quit" then
+                print("Goodbye!")
+                exit
+            end if
+            
+            // Check if it's time for a game tick
+            now = time
+            if now - lastTick >= tickDelay then
+                // Update game state
+                GameState.update()
+                lastTick = now
+                
+                // Increase speed as score increases
+                speedBonus = floor(GameState.score / 50) * 0.01
+                if speedBonus > 0.06 then speedBonus = 0.06
+                tickDelay = 0.12 - speedBonus
+            end if
+            
+            // Check for game over
+            if GameState.gameOver then
+                gameMode = "gameover"
+                InputState.clear()
+            end if
+            
+            // Render current state
+            SnakeRenderer.renderPlayingDirect(GameState)
+            Canvas.render()
+            
+            wait(0.03)  // Small delay to prevent CPU spinning
+            
+        else if gameMode == "gameover" then
+            // Render game over screen
+            isNew = GameState.isNewHighScore()
+            SnakeRenderer.renderGameOver({
+                "score": GameState.score,
+                "highScore": GameState.highScore,
+                "newHighScore": isNew
+            })
+            Canvas.render()
+            
+            // Check for restart or quit
+            if key == "restart" then
+                GameState.reset()
+                gameMode = "title"
+                InputState.clear()
+            else if key == "quit" then
+                print("Goodbye!")
+                exit
+            end if
+            
+            wait(0.05)
+        end if
+    end while
+end function
+
+// =====================================================
+// INPUT MODE - Captures keyboard input
+// =====================================================
+runInputMode = function()
+    clear_screen
+    
+    print("===========================================")
+    print("        Snake - Input Controller")
+    print("===========================================")
+    print("")
+    print("This terminal captures your keyboard input.")
+    print("The game runs in the 'display' terminal.")
+    print("")
+    print("Controls:")
+    print("  W / Up Arrow    - Move Up")
+    print("  S / Down Arrow  - Move Down")
+    print("  A / Left Arrow  - Move Left")
+    print("  D / Right Arrow - Move Right")
+    print("  R               - Restart (after game over)")
+    print("  Q               - Quit")
+    print("")
+    print("Press keys to control the snake!")
+    print("")
+    
+    while true
+        key = user_input(">", false, true)
+        key = key.lower
+        
+        // Debug: show raw key
+        print("Key: [" + key + "]")
+        
+        // Map keys to commands
+        command = ""
+        if key == "w" or key == "UpArrow" or key == "uparrow" then
+            command = "up"
+            print("  ^ UP")
+        else if key == "s" or key == "DownArrow" or key == "downarrow" then
+            command = "down"
+            print("  v DOWN")
+        else if key == "a" or key == "LeftArrow" or key == "leftarrow" then
+            command = "left"
+            print("  < LEFT")
+        else if key == "d" or key == "RightArrow" or key == "rightarrow" then
+            command = "right"
+            print("  > RIGHT")
+        else if key == "r" then
+            command = "restart"
+            print("  RESTART")
+        else if key == "q" then
+            command = "quit"
+            print("  QUIT")
+            InputState.write(command)
+            print("")
+            print("Goodbye!")
+            exit
+        end if
+        
+        // Write command to file for display mode to read
+        if command != "" then
+            InputState.write(command)
+            print("  -> Wrote: " + command)
+        end if
+    end while
+end function
+
+// =====================================================
+// MAIN ENTRY POINT
+// =====================================================
+
+// Check command line arguments
+args = params
+if args == null then args = []
+
+if args.len > 0 then
+    mode = args[0].lower
+    if mode == "display" or mode == "game" then
+        runDisplayMode()
+    else if mode == "input" then
+        runInputMode()
+    else
+        print("Unknown mode: " + mode)
+        print("")
+        print("Usage: snake [display|input]")
+        print("  display - Game mode (runs game loop + graphics)")
+        print("  input   - Input controller (captures keys)")
+    end if
+else
+    print("===========================================")
+    print("         Snake for Grey Hack")
+    print("===========================================")
+    print("")
+    print("Usage: snake [display|input]")
+    print("")
+    print("  display - Game mode (runs game + graphics)")
+    print("           The snake moves automatically!")
+    print("")
+    print("  input   - Input controller")
+    print("           Captures your keyboard input")
+    print("")
+    print("How to play:")
+    print("  1. Run 'snake display' in one terminal")
+    print("  2. Run 'snake input' in another terminal")
+    print("  3. Use WASD or arrow keys to control the snake")
+    print("")
+end if
