@@ -1,6 +1,6 @@
 using HarmonyLib;
 using BepInEx.Logging;
-using GreyHackTerminalUI.Canvas;
+using GreyHackTerminalUI.Runtime;
 using GreyHackTerminalUI.Utils;
 
 namespace GreyHackTerminalUI.Patches
@@ -23,8 +23,8 @@ namespace GreyHackTerminalUI.Patches
             bool replaceText,
             int windowPID)
         {
-            // Only process if we have data and the canvas manager is initialized
-            if (zipOutput == null || zipOutput.Length == 0 || CanvasManager.Instance == null)
+            // Only process if we have data and the runtime manager is initialized
+            if (zipOutput == null || zipOutput.Length == 0 || RuntimeManager.Instance == null)
             {
                 return true; // Continue with original method
             }
@@ -43,7 +43,7 @@ namespace GreyHackTerminalUI.Patches
                 _logger?.LogDebug($"Intercepted print with UI blocks for window {windowPID}");
 
                 // Process the output and get the stripped version
-                string processedOutput = CanvasManager.Instance.ProcessOutput(output, windowPID);
+                string processedOutput = RuntimeManager.Instance.ProcessOutput(output, windowPID);
 
                 // If the processed output is different (blocks were stripped)
                 if (processedOutput != output)
@@ -72,21 +72,26 @@ namespace GreyHackTerminalUI.Patches
         [HarmonyPostfix]
         public static void Postfix_CloseProgramClientRpc(int PID, byte[] zipProcs, bool isScript)
         {
-            CanvasManager.Instance.DestroyWindow(PID);
+            RuntimeManager.Instance.DestroyWindow(PID);
+            TerminalToast.Remove(PID);
         }
 
         [HarmonyPatch(typeof(Terminal), "CloseWindow")]
         [HarmonyPostfix]
         static void Postfix_CloseWindow(Terminal __instance)
         {
-            CanvasManager.Instance.DestroyWindow(__instance.GetPID());
+            var pid = __instance.GetPID();
+            RuntimeManager.Instance.DestroyWindow(pid);
+            TerminalToast.Remove(pid);
         }
 
         [HarmonyPatch(typeof(Ventana), nameof(Ventana.CloseTaskBar), new System.Type[] { })]
         [HarmonyPostfix]
         static void Postfix_CloseTaskBar(Ventana __instance)
         {
-            CanvasManager.Instance.DestroyWindow(__instance.GetPID());
+            var pid = __instance.GetPID();
+            RuntimeManager.Instance.DestroyWindow(pid);
+            TerminalToast.Remove(pid);
         }
     }
 }

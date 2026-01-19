@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using GreyHackTerminalUI.Canvas;
+using GreyHackTerminalUI.Runtime;
 using GreyHackTerminalUI.Sound;
+using GreyHackTerminalUI.Browser.Window;
 
 namespace GreyHackTerminalUI.VM
 {
@@ -136,6 +138,9 @@ namespace GreyHackTerminalUI.VM
             
             // Register Sound object
             RegisterSoundObject();
+            
+            // Register Browser object
+            RegisterBrowserObject();
         }
 
         private void RegisterCanvasObject()
@@ -151,7 +156,7 @@ namespace GreyHackTerminalUI.VM
                     Debug.Log($"[Intrinsics] Canvas.show() called, window exists for terminal {window.TerminalPID}");
                     window.Show();
                     // Mark this terminal as having a visible window
-                    CanvasManager.Instance?.MarkWindowVisible(window.TerminalPID);
+                    RuntimeManager.Instance?.MarkWindowVisible(window.TerminalPID);
                 }
                 else
                 {
@@ -801,6 +806,149 @@ namespace GreyHackTerminalUI.VM
             };
 
             RegisterObject(soundInstance);
+        }
+
+        private void RegisterBrowserObject()
+        {
+            var browser = new IntrinsicObject("Browser");
+
+            // Browser.show()
+            browser.Methods["show"] = (target, args, ctx) =>
+            {
+                var window = GetBrowserWindow(ctx);
+                if (window != null)
+                {
+                    Debug.Log($"[Intrinsics] Browser.show() called for terminal {window.TerminalPID}");
+                    window.Show();
+                    BrowserManager.Instance?.MarkWindowVisible(window.TerminalPID);
+                }
+                else
+                {
+                    // Check if browser is still initializing via TerminalContext
+                    int terminalPID = ctx.GetInternal("terminalPID") as int? ?? 0;
+                    if (BrowserManager.Instance?.HasBrowserEngine == true)
+                    {
+                        Debug.Log($"[Intrinsics] Browser.show() - browser still initializing for terminal {terminalPID}, will retry automatically");
+                        // Queue a retry - the browser init is in progress
+                        // For now just log - user should call again or we need async support
+                    }
+                    else
+                    {
+                        Debug.LogWarning("[Intrinsics] Browser.show() called but browser engine not configured");
+                    }
+                }
+                return null;
+            };
+
+            // Browser.hide()
+            browser.Methods["hide"] = (target, args, ctx) =>
+            {
+                var window = GetBrowserWindow(ctx);
+                window?.Hide();
+                return null;
+            };
+
+            // Browser.setSize(width, height)
+            browser.Methods["setSize"] = (target, args, ctx) =>
+            {
+                if (args.Length < 2) return null;
+                
+                int terminalPID = ctx.GetInternal("terminalPID") as int? ?? 0;
+                float currentTime = Time.time;
+                if (_lastSetSizeTime.TryGetValue(terminalPID + 1000000, out float lastTime))
+                {
+                    if (currentTime - lastTime < SET_SIZE_COOLDOWN)
+                    {
+                        return null;
+                    }
+                }
+                _lastSetSizeTime[terminalPID + 1000000] = currentTime;
+                
+                var window = GetBrowserWindow(ctx);
+                window?.SetSize(ToInt(args[0]), ToInt(args[1]));
+                return null;
+            };
+
+            // Browser.setTitle(title)
+            browser.Methods["setTitle"] = (target, args, ctx) =>
+            {
+                if (args.Length < 1) return null;
+                var window = GetBrowserWindow(ctx);
+                window?.SetTitle(args[0]?.ToString() ?? "");
+                return null;
+            };
+
+            // Browser.executeJs(code)
+            browser.Methods["executeJs"] = (target, args, ctx) =>
+            {
+                if (args.Length < 1) return null;
+                var window = GetBrowserWindow(ctx);
+                window?.ExecuteJs(args[0]?.ToString() ?? "");
+                return null;
+            };
+
+            // Browser.loadHtml(html)
+            browser.Methods["loadHtml"] = (target, args, ctx) =>
+            {
+                if (args.Length < 1) return null;
+                var window = GetBrowserWindow(ctx);
+                window?.LoadHtml(args[0]?.ToString() ?? "");
+                return null;
+            };
+
+            // Browser.focus()
+            browser.Methods["focus"] = (target, args, ctx) =>
+            {
+                var window = GetBrowserWindow(ctx);
+                window?.BringToFront();
+                return null;
+            };
+
+            // Browser.title (getter)
+            browser.Getters["title"] = (target, ctx) =>
+            {
+                var window = GetBrowserWindow(ctx);
+                return window?.PageTitle ?? "";
+            };
+
+            // Browser.width (getter)
+            browser.Getters["width"] = (target, ctx) =>
+            {
+                var window = GetBrowserWindow(ctx);
+                return window?.Width ?? 0;
+            };
+
+            // Browser.height (getter)
+            browser.Getters["height"] = (target, ctx) =>
+            {
+                var window = GetBrowserWindow(ctx);
+                return window?.Height ?? 0;
+            };
+
+            // Browser.isVisible (getter)
+            browser.Getters["isVisible"] = (target, ctx) =>
+            {
+                var window = GetBrowserWindow(ctx);
+                return window?.IsVisible ?? false;
+            };
+
+            // Browser.isInitialized (getter)
+            browser.Getters["isInitialized"] = (target, ctx) =>
+            {
+                var window = GetBrowserWindow(ctx);
+                return window?.IsInitialized ?? false;
+            };
+
+            RegisterObject(browser);
+        }
+
+        private UltralightWindow GetBrowserWindow(VMContext ctx)
+        {
+            if (ctx.Globals.TryGetValue("__browserWindow", out object window))
+            {
+                return window as UltralightWindow;
+            }
+            return null;
         }
     }
 }

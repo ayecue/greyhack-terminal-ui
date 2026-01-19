@@ -1,0 +1,20 @@
+# Don't copy build artifacts from host
+build/
+dist/
+
+# Don't copy SDK (will be mounted or downloaded in container)
+sdk/
+
+# Git files
+.git/
+.gitignore
+
+# IDE files
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db

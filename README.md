@@ -183,6 +183,63 @@ Each example includes its own README with detailed setup instructions and implem
 
 ---
 
+## Browser Features (Optional)
+
+The mod includes an optional browser engine integration using Ultralight, providing a modern HTML5/CSS3 rendering engine that can be used both programmatically from GreyScript and as a replacement for the game's built-in PowerUI browser.
+
+### Features
+
+- **Standalone Browser Windows**: Spawn browser windows from GreyScript to display custom HTML content
+- **PowerUI Replacement**: Optionally replaces the game's internal PowerUI-based browser with Ultralight for better HTML/CSS/JS compatibility
+- **Fully Optional**: Browser features can be enabled/disabled at runtime, and the native libraries are optional to install
+
+### Installation
+
+Browser features require additional native libraries. Those should be all included in the mod package. The mod automatically detects if the native libraries are available and gracefully disables browser features if they're missing.
+
+### Configuration
+
+Browser features can be configured in the BepInEx config file or via the in-game settings menu:
+
+- **Browser Enabled**: Master toggle for all browser features (default: true)
+- **Browser UI Enabled**: Enable the standalone browser window API (default: true)  
+- **PowerUI Replacement Enabled**: Replace the game's built-in browser with Ultralight (default: true)
+
+### Browser API
+
+The `Browser` object allows spawning browser windows from GreyScript:
+
+```greyscript
+print("#UI{
+    Browser.show()
+    Browser.setSize(800, 600)
+    Browser.setTitle(""My Browser"")
+    Browser.loadHtml(""<html><body><h1>Hello World</h1></body></html>"")
+}")
+```
+
+Available functions:
+
+- `Browser.show()` — Show the browser window
+- `Browser.hide()` — Hide the browser window  
+- `Browser.setSize(w, h)` — Set window dimensions
+- `Browser.setTitle(title)` — Set window title
+- `Browser.loadHtml(html)` — Load HTML content
+- `Browser.executeJs(code)` — Execute JavaScript in the browser context
+
+### PowerUI Replacement
+
+When enabled, the mod patches the game's `HtmlBrowser` class to render in-game web pages (banks, shops, corporate sites, etc.) using Ultralight instead of PowerUI. This provides:
+
+- Better CSS3 support (flexbox, grid, modern properties)
+- JavaScript compatibility
+- Improved text rendering
+- Hardware-accelerated rendering
+
+The replacement maintains full compatibility with the game's existing HTML content and streaming mode redaction features.
+
+---
+
 ## Building From Source
 
 Project layout (high level):

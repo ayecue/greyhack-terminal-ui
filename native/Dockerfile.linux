@@ -1,0 +1,47 @@
+# Dockerfile for building ulbridge Linux x64
+#
+# Usage:
+#   docker build -f Dockerfile.linux -t ulbridge-linux --platform linux/amd64 .
+#   docker run --rm --platform linux/amd64 -v $(pwd)/dist:/native/dist ulbridge-linux
+#
+
+FROM --platform=linux/amd64 ubuntu:22.04
+
+# Avoid interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    ninja-build \
+    git \
+    python3 \
+    python3-pip \
+    curl \
+    wget \
+    unzip \
+    p7zip-full \
+    pkg-config \
+    libx11-dev \
+    libxcursor-dev \
+    libxrandr-dev \
+    libxinerama-dev \
+    libxi-dev \
+    libgl1-mesa-dev \
+    libglu1-mesa-dev \
+    libfontconfig1-dev \
+    libfreetype6-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /native
+
+# Copy the entire native directory
+COPY . .
+
+# Make build script executable
+RUN chmod +x build.sh setup-sdk.py
+
+# Default command: build for Linux
+CMD ["./build.sh", "linux"]

@@ -39,10 +39,14 @@ namespace GreyHackTerminalUI.Utils
             dialog.ShowTitleMinimizeButton = false;
             dialog.ShowTitleMaximizeButton = false;
             dialog.AllowDraggingViaTitle = true;
+            dialog.AllowDraggingViaDialog = false;  // Disable dialog body dragging so child elements can handle drags
             dialog.FocusOnShow = true;
             dialog.Modal = false;
-            dialog.DestroyAfterClose = true;
+            dialog.DestroyAfterClose = false;  // Keep dialog alive so it can be shown again
             dialog.VisibleOnStart = false;
+            
+            // Apply game theme colors
+            ApplyTheme(dialog);
             
             // Set size
             var rectTransform = dialog.GetComponent<RectTransform>();
@@ -168,6 +172,25 @@ namespace GreyHackTerminalUI.Utils
             
             Debug.LogWarning("[DialogBuilder] Could not find content area in dialog");
             return null;
+        }
+        
+        public static void ApplyTheme(uDialog dialog)
+        {
+            if (dialog == null)
+                return;
+            
+            // Update theme colors from game (throttled internally)
+            GameThemeHelper.UpdateTheme();
+            
+            // Apply colors like Ventana.SetColors() does
+            dialog.Color_TitleBackground = GameThemeHelper.TitleColor;
+            dialog.Color_TitleText = GameThemeHelper.TitleTextColor;
+            dialog.Color_ViewportBackground = GameThemeHelper.WindowBackgroundColor;
+            dialog.Color_Glow = GameThemeHelper.OutlineColor;
+            dialog.Color_ButtonBackground = GameThemeHelper.ButtonColor;
+            dialog.Color_ButtonHighlight = GameThemeHelper.ButtonHighlightColor;
+            dialog.Color_ButtonImage = GameThemeHelper.ButtonImagesColor;
+            dialog.Color_ButtonText = GameThemeHelper.TextColor;
         }
     }
 }
