@@ -742,9 +742,10 @@ if (window.greyhack && window.greyhack.terminal) {{
         {
             var terminal = FindTerminal();
             if (terminal == null) return false;
-            var field = Traverse.Create(terminal).Field("pendingInputScript");
-            if (field == null) return false;
-            return field.GetValue<bool>();
+            var terminalProxy = Traverse.Create(terminal);
+            bool pendingInputScript = terminalProxy.Field("pendingInputScript").GetValue<bool>();
+            bool inputDisabled = terminalProxy.Field("inputDisabled").GetValue<bool>();
+            return !inputDisabled && pendingInputScript;
         }
         
         public bool IsTerminalWaitingForAnyKey()
