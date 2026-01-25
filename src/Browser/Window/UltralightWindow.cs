@@ -311,6 +311,9 @@ namespace GreyHackTerminalUI.Browser.Window
             
             // Auto-inject the terminal API so it's always available
             InjectTerminalJSApi();
+            
+            // Inject selection tracking
+            _browser?.InjectSelectionTracking(_securityToken);
         }
 
         public void Show()

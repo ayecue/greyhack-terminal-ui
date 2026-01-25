@@ -968,10 +968,6 @@ static void backgroundLoop()
             renderer->Render();
         }
         
-        // NOTE: Events are NOT drained here anymore.
-        // C# must call ulbridge_poll_events() on the main thread to fire events.
-        // This prevents cross-thread issues with Unity objects.
-        
         // Sleep to maintain target frame rate
         auto frameEnd = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(frameEnd - frameStart);
@@ -1226,30 +1222,6 @@ extern "C" ULBAPI bool ulbridge_view_has_focus(const char* name)
         return false;
     }
     return it->second.view->HasFocus();
-}
-
-static thread_local std::string g_selectionBuffer;
-
-extern "C" ULBAPI const char* ulbridge_view_get_selection(const char* name)
-{
-    std::lock_guard<std::mutex> lock(viewsLock);
-    auto it = views.find(name);
-    if (it == views.end()) {
-        g_selectionBuffer.clear();
-        return g_selectionBuffer.c_str();
-    }
-
-    auto& v = it->second;
-    if (!v.domReady) {
-        g_selectionBuffer.clear();
-        return g_selectionBuffer.c_str();
-    }
-
-    String result = v.view->EvaluateScript(
-        String("(function() { var s = window.getSelection(); return s ? s.toString() : ''; })()"));
-    
-    g_selectionBuffer = result.utf8().data();
-    return g_selectionBuffer.c_str();
 }
 
 // =============================================================================

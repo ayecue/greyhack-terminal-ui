@@ -412,18 +412,6 @@ namespace GreyHackTerminalUI.Browser.Core
             [MarshalAs(UnmanagedType.LPStr)] string script);
 
         [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
-        private static extern IntPtr ulbridge_view_get_selection(
-            [MarshalAs(UnmanagedType.LPStr)] string name);
-
-        public static string GetViewSelection(string name)
-        {
-            IntPtr ptr = ulbridge_view_get_selection(name);
-            if (ptr == IntPtr.Zero)
-                return string.Empty;
-            return Marshal.PtrToStringUTF8(ptr) ?? string.Empty;
-        }
-
-        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
         public static extern void ulbridge_view_resize(
             [MarshalAs(UnmanagedType.LPStr)] string name, int w, int h);
 

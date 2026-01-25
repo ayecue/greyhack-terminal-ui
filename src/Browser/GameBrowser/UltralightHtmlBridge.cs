@@ -142,6 +142,10 @@ html, body { height: 100%; background: #0a0a0f; }
             ViewTexture = new Texture2D(ViewWidth, ViewHeight, TextureFormat.BGRA32, false);
             State = ViewState.Active;
 
+            // Register selection tracking callback for this view
+            _selectionCallbackName = $"selection_{ViewName}";
+            ULBridge.RegisterJSCallback(_selectionCallbackName, text => _currentSelection = text);
+
             // Register callback for button clicks from JavaScript
             ULBridge.RegisterJSCallback($"btn_{ViewName}", OnJSButtonClick);
 
@@ -226,15 +230,14 @@ html, body { height: 100%; background: #0a0a0f; }
 
         private void InjectEventListeners()
         {
-            if (State != ViewState.Active || !_listenersActive) return;
-
-            // Check if we have the security token yet
-            if (string.IsNullOrEmpty(_securityToken))
-            {
-                Log.LogWarning("InjectEventListeners: security token not yet available, will retry on next call");
-                return;
-            }
-
+            InjectBtnTracking(_securityToken);
+            InjectSelectionTracking(_securityToken);
+        }
+        
+        private void InjectBtnTracking(string securityToken)
+        {
+            if (State != ViewState.Active || string.IsNullOrEmpty(securityToken)) return;
+            
             // Inject JavaScript to intercept clicks on .btn.btn-primary elements
             // The security token is captured in the closure - user JS cannot access it
             // The native function is hidden (non-enumerable) and requires valid token
@@ -251,7 +254,7 @@ html, body { height: 100%; background: #0a0a0f; }
                     }});
                 }})('{_securityToken}');
             ";
-
+            
             ExecuteJavaScript(script);
         }
 

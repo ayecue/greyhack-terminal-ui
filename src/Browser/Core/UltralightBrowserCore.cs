@@ -25,6 +25,10 @@ namespace GreyHackTerminalUI.Browser.Core
         protected int ViewHeight;
         protected Texture2D ViewTexture;
         protected Color32[] PixelBuffer;
+        
+        // Selection tracking (updated via JS bridge)
+        protected string _currentSelection = string.Empty;
+        protected string _selectionCallbackName;
 
         // Keycode mapping for keyboard input
         protected static readonly Dictionary<KeyCode, int> KeycodeMap = new Dictionary<KeyCode, int>
@@ -134,6 +138,10 @@ namespace GreyHackTerminalUI.Browser.Core
             ViewTexture = new Texture2D(ViewWidth, ViewHeight, TextureFormat.BGRA32, false);
             State = ViewState.Active;
 
+            // Register selection tracking callback for this view
+            _selectionCallbackName = $"selection_{ViewName}";
+            ULBridge.RegisterJSCallback(_selectionCallbackName, text => _currentSelection = text);
+
             // Give the view focus so it can handle text selection
             ULBridge.ulbridge_view_focus(ViewName);
 
@@ -156,6 +164,25 @@ namespace GreyHackTerminalUI.Browser.Core
             return html;
         }
 
+        public void InjectSelectionTracking(string securityToken)
+        {
+            if (State != ViewState.Active || string.IsNullOrEmpty(securityToken)) return;
+            
+            var script = $@"
+                (function(t) {{
+                    document.addEventListener('selectionchange', function() {{
+                        var s = window.getSelection();
+                        var text = s ? s.toString() : '';
+                        if (typeof __ulb_nc__ === 'function') {{
+                            __ulb_nc__(t, 'selection_{ViewName}', text);
+                        }}
+                    }});
+                }})('{securityToken}');
+            ";
+            
+            ExecuteJavaScript(script);
+        }
+
         #endregion
 
         #region JavaScript
@@ -169,7 +196,7 @@ namespace GreyHackTerminalUI.Browser.Core
         public virtual string GetSelectedText()
         {
             if (State != ViewState.Active) return string.Empty;
-            return ULBridge.GetViewSelection(ViewName);
+            return _currentSelection;
         }
 
         public virtual void CopySelectionToClipboard()
@@ -447,6 +474,12 @@ namespace GreyHackTerminalUI.Browser.Core
 
         protected virtual void OnDisposing()
         {
+            // Unregister selection callback
+            if (!string.IsNullOrEmpty(_selectionCallbackName))
+            {
+                ULBridge.UnregisterJSCallback(_selectionCallbackName);
+                _selectionCallbackName = null;
+            }
         }
 
         ~UltralightBrowserCore()
