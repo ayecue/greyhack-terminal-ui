@@ -9,12 +9,19 @@
 #include <AppCore/Platform.h>
 
 // Standard Library
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <mutex>
+#include <queue>
 #include <sstream>
+#include <thread>
 #include <unordered_map>
+#include <variant>
 #include <vector>
 
 // UTF conversion (header-only library)
@@ -57,6 +64,7 @@ using json = nlohmann::json;
 //   3 = Load       - Load events (loadEventType, frameId, isMainFrame, url, error info)
 //   4 = Log        - Internal log message
 //   5 = Error      - Internal error message
+//   6 = ViewCreated - View was created (viewName, securityToken)
 
 enum class ULEventType : int {
     Command = 0,
@@ -64,7 +72,8 @@ enum class ULEventType : int {
     Cursor = 2,
     Load = 3,
     Log = 4,
-    Error = 5
+    Error = 5,
+    ViewCreated = 6
 };
 
 // Forward declare event firing
@@ -101,6 +110,76 @@ typedef void (*UnifiedEventCallback)(int, const char*, const char*);
 static UnifiedEventCallback eventCallback = nullptr;
 
 // =============================================================================
+// Background Thread & Command Queue
+// =============================================================================
+
+// Command types for the message queue
+struct CmdInit { bool gpu; std::string resourcePath; };
+struct CmdShutdown {};
+struct CmdViewCreate { std::string name; int w; int h; };
+struct CmdViewDelete { std::string name; };
+struct CmdViewLoadHtml { std::string name; std::string html; };
+struct CmdViewEvalScript { std::string name; std::string script; };
+struct CmdViewResize { std::string name; int w; int h; };
+struct CmdViewMouseEvent { std::string name; int x; int y; int type; int button; };
+struct CmdViewScrollEvent { std::string name; int x; int y; int type; };
+struct CmdViewKeyEvent { std::string name; int type; int vcode; int mods; };
+struct CmdViewFocus { std::string name; };
+struct CmdViewUnfocus { std::string name; };
+struct CmdRegisterImage { std::string id; std::vector<unsigned char> pixels; int width; int height; };
+
+using BridgeCmd = std::variant<
+    CmdInit,
+    CmdShutdown,
+    CmdViewCreate,
+    CmdViewDelete,
+    CmdViewLoadHtml,
+    CmdViewEvalScript,
+    CmdViewResize,
+    CmdViewMouseEvent,
+    CmdViewScrollEvent,
+    CmdViewKeyEvent,
+    CmdViewFocus,
+    CmdViewUnfocus,
+    CmdRegisterImage
+>;
+
+// Thread-safe command queue
+static std::queue<BridgeCmd> commandQueue;
+static std::mutex queueMutex;
+static std::condition_variable queueCV;
+static std::atomic<bool> running{false};
+static std::atomic<bool> initialized{false};
+static std::thread backgroundThread;
+
+// Event queue - events are queued during command processing and fired after render
+struct QueuedEvent {
+    ULEventType type;
+    std::string viewName;
+    json data;
+};
+static std::queue<QueuedEvent> eventQueue;
+static std::mutex eventQueueMutex;
+
+// Target frame rate for the background loop (60 FPS)
+static constexpr int TARGET_FPS = 60;
+static constexpr auto FRAME_DURATION = std::chrono::microseconds(1000000 / TARGET_FPS);
+
+// Forward declarations for command processing
+static void processCommand(const BridgeCmd& cmd);
+static void backgroundLoop();
+
+// Enqueue a command to be processed on the background thread
+template<typename T>
+static void enqueueCommand(T&& cmd) {
+    {
+        std::lock_guard<std::mutex> lock(queueMutex);
+        commandQueue.push(std::forward<T>(cmd));
+    }
+    queueCV.notify_one();
+}
+
+// =============================================================================
 // Utility Functions
 // =============================================================================
 
@@ -123,6 +202,29 @@ static void fireEvent(ULEventType type, const char* viewName, const json& data)
 {
     if (eventCallback) {
         eventCallback(static_cast<int>(type), viewName ? viewName : "", data.dump().c_str());
+    }
+}
+
+// Queue an event to be fired after the current render cycle completes
+static void queueEvent(ULEventType type, const char* viewName, const json& data)
+{
+    std::lock_guard<std::mutex> lock(eventQueueMutex);
+    eventQueue.push(QueuedEvent{type, viewName ? viewName : "", data});
+}
+
+// Drain and fire all queued events (called after render cycle)
+static void drainEventQueue()
+{
+    std::queue<QueuedEvent> localQueue;
+    {
+        std::lock_guard<std::mutex> lock(eventQueueMutex);
+        std::swap(localQueue, eventQueue);
+    }
+    
+    while (!localQueue.empty()) {
+        const auto& evt = localQueue.front();
+        fireEvent(evt.type, evt.viewName.c_str(), evt.data);
+        localQueue.pop();
     }
 }
 
@@ -169,8 +271,6 @@ struct ViewData
 
 static std::unordered_map<std::string, ViewData> views;
 static std::mutex viewsLock;
-static std::vector<std::pair<std::string, std::string>> commands;
-static std::mutex commandsLock;
 
 // Path to Ultralight's internal resources (icudt67l.dat, cacert.pem)
 static std::string ultralightResourcesPath;
@@ -343,7 +443,7 @@ public:
     virtual void OnChangeCursor(ultralight::View* caller,
                                 ultralight::Cursor cursor) override
     {
-        fireEvent(ULEventType::Cursor, viewName.c_str(), json{
+        queueEvent(ULEventType::Cursor, viewName.c_str(), json{
             {"cursorType", static_cast<int>(cursor)}
         });
     }
@@ -357,8 +457,8 @@ public:
         int line = static_cast<int>(message.line_number());
         int column = static_cast<int>(message.column_number());
         
-        // Fire unified console event
-        fireEvent(ULEventType::Console, viewName.c_str(), json{
+        // Queue unified console event (fired after render cycle)
+        queueEvent(ULEventType::Console, viewName.c_str(), json{
             {"level", level},
             {"message", msg},
             {"sourceId", srcId},
@@ -413,17 +513,11 @@ JSValueRef native_call(JSContextRef ctx, JSObjectRef function,
     JSStringRelease(jName);
     JSStringRelease(jArg);
 
-    // Fire unified command event
-    fireEvent(ULEventType::Command, "", json{
+    queueEvent(ULEventType::Command, "", json{
         {"command", cmdName},
         {"args", args}
     });
 
-    // Also queue for polling if no callback registered
-    if (!eventCallback) {
-        std::lock_guard g(commandsLock);
-        commands.emplace_back(cmdName, args);
-    }
     return JSValueMakeNull(ctx);
 }
 
@@ -498,7 +592,7 @@ public:
             data["errorDomain"] = errorDomain;
             data["errorCode"] = errorCode;
         }
-        fireEvent(ULEventType::Load, name.c_str(), data);
+        queueEvent(ULEventType::Load, name.c_str(), data);
     }
 };
 
@@ -544,23 +638,15 @@ void BridgeListener::OnDOMReady(View* view, uint64_t frame_id,
 }
 
 // =============================================================================
-// Initialization
+// Initialization (Internal - called on background thread)
 // =============================================================================
 
-static bool initialized = false;
-
-extern "C" ULBAPI void ulbridge_init(bool gpu, const char* resourcePath)
+static void doInit(bool gpu, const std::string& resourcePath)
 {
-    ULDEBUG("ULBRIDGE INIT " << initialized);
-    if (initialized) {
-        return;
-    }
-    initialized = true;
+    ULDEBUG("ULBRIDGE INIT (background thread)");
 
     // Determine base path for Ultralight internal resources
-    std::string basePath = (resourcePath != nullptr && resourcePath[0] != '\0') 
-                           ? std::string(resourcePath) 
-                           : kDefaultBasePath;
+    std::string basePath = !resourcePath.empty() ? resourcePath : kDefaultBasePath;
     
     std::string resourcesPath = basePath + kResourcesSubdir;
     ultralightResourcesPath = resourcesPath;
@@ -581,29 +667,31 @@ extern "C" ULBAPI void ulbridge_init(bool gpu, const char* resourcePath)
 
     // Create the renderer
     renderer = Renderer::Create();
+    
+    initialized = true;
 }
 
-// Register an image with Ultralight's ImageSourceProvider singleton.
-extern "C" ULBAPI bool ulbridge_register_image(const char* id, const unsigned char* pixels, int width, int height)
+// Register an image with Ultralight's ImageSourceProvider singleton (internal).
+static bool doRegisterImage(const std::string& id, const std::vector<unsigned char>& pixels, int width, int height)
 {
-    if (!id || !pixels || width <= 0 || height <= 0) {
+    if (id.empty() || pixels.empty() || width <= 0 || height <= 0) {
         ULERR("Invalid parameters for register_image");
         return false;
     }
     
     RefPtr<Bitmap> bitmap = Bitmap::Create(width, height, BitmapFormat::BGRA8_UNORM_SRGB);
     void* dst = bitmap->LockPixels();
-    memcpy(dst, pixels, width * height * 4);
+    memcpy(dst, pixels.data(), width * height * 4);
     bitmap->UnlockPixels();
     
     RefPtr<ImageSource> imageSource = ImageSource::CreateFromBitmap(bitmap);
-    ImageSourceProvider::instance().AddImageSource(String(id), imageSource);
+    ImageSourceProvider::instance().AddImageSource(String(id.c_str()), imageSource);
 
     return true;
 }
 
 // =============================================================================
-// Synchronous View API
+// Internal View Operations (called on background thread only)
 // =============================================================================
 
 static std::string generateSecurityToken() {
@@ -617,22 +705,7 @@ static std::string generateSecurityToken() {
     return std::string(buf);
 }
 
-extern "C" ULBAPI void ulbridge_render()
-{
-    renderer->Render();
-}
-
-extern "C" ULBAPI void ulbridge_update()
-{
-    renderer->Update();
-}
-
-extern "C" ULBAPI void ulbridge_refresh_display(uint32_t display_id)
-{
-    renderer->RefreshDisplay(display_id);
-}
-
-extern "C" ULBAPI void ulbridge_view_create(const char* name, int w, int h)
+static void doViewCreate(const std::string& name, int w, int h)
 {
     ViewConfig viewConfig;
     viewConfig.is_accelerated = false;  // Use CPU renderer
@@ -640,6 +713,7 @@ extern "C" ULBAPI void ulbridge_view_create(const char* name, int w, int h)
     viewConfig.initial_device_scale = 1.0;
 
     RefPtr<View> view = renderer->CreateView(w, h, viewConfig, nullptr);
+    std::lock_guard<std::mutex> lock(viewsLock);
     auto [it, inserted] = views.try_emplace(name);
     auto& vd = it->second;
     vd.view = view;
@@ -653,153 +727,39 @@ extern "C" ULBAPI void ulbridge_view_create(const char* name, int w, int h)
         networkListener = std::make_unique<BlockingNetworkListener>();
     }
     view->set_network_listener(networkListener.get());
+    
+    // Queue ViewCreated event with the security token (fired after render cycle)
+    queueEvent(ULEventType::ViewCreated, name.c_str(), json{
+        {"securityToken", vd.securityToken}
+    });
 }
 
-// Thread-local buffer for returning security token to C#
-static thread_local std::string tokenBuffer;
-
-extern "C" ULBAPI const char* ulbridge_view_get_token(const char* name)
+static void doViewDelete(const std::string& name)
 {
+    std::lock_guard<std::mutex> lock(viewsLock);
     auto it = views.find(name);
     if (it == views.end()) {
-        return "";
-    }
-    tokenBuffer = it->second.securityToken;
-    return tokenBuffer.c_str();
-}
-
-extern "C" ULBAPI bool ulbridge_view_is_dirty(const char* name)
-{
-    auto it = views.find(name);
-    if (it == views.end()) {
-        ULERR("View does not exist: " << name);
-        return false;
-    }
-
-    BitmapSurface* surface = (BitmapSurface*)(it->second.view->surface());
-    return !surface->dirty_bounds().IsEmpty();
-}
-
-extern "C" ULBAPI void* ulbridge_view_get_pixels(const char* name, int* w, int* h, int* stride)
-{
-    auto it = views.find(name);
-    if (it == views.end()) {
-        return nullptr;
-    }
-
-    auto& vd = it->second;
-    Surface* surface = vd.view->surface();
-    BitmapSurface* bitmap_surface = (BitmapSurface*)surface;
-    RefPtr<Bitmap> bitmap = bitmap_surface->bitmap();
-
-    vd.bitmap = bitmap;
-    *w = bitmap->width();
-    *h = bitmap->height();
-    *stride = bitmap->row_bytes();
-
-    void* pixels = vd.bitmap->LockPixels();
-    return pixels;
-}
-
-extern "C" ULBAPI int ulbridge_view_width(const char* name)
-{
-    auto it = views.find(name);
-    if (it == views.end() || !it->second.bitmap) {
-        ULERR("ulbridge_view_width: invalid view or bitmap");
-        return 0;
-    }
-    return it->second.bitmap->width();
-}
-
-extern "C" ULBAPI int ulbridge_view_height(const char* name)
-{
-    auto it = views.find(name);
-    if (it == views.end() || !it->second.bitmap) {
-        ULERR("ulbridge_view_height: invalid view or bitmap");
-        return 0;
-    }
-    return it->second.bitmap->height();
-}
-
-extern "C" ULBAPI int ulbridge_view_stride(const char* name)
-{
-    auto it = views.find(name);
-    if (it == views.end() || !it->second.bitmap) {
-        ULERR("ulbridge_view_stride: invalid view or bitmap");
-        return 0;
-    }
-    return it->second.bitmap->row_bytes();
-}
-
-extern "C" ULBAPI void ulbridge_view_unlock_pixels(const char* name)
-{
-    auto it = views.find(name);
-    if (it == views.end()) {
-        ULERR("ulbridge_view_unlock_pixels: view not found");
+        ULERR("doViewDelete: view not found: " << name);
         return;
     }
-    auto& vd = it->second;
-    if (!vd.bitmap) {
-        ULERR("ulbridge_view_unlock_pixels: no locked bitmap");
-        return;
-    }
-    BitmapSurface* surface = (BitmapSurface*)(vd.view->surface());
-    vd.bitmap->UnlockPixels();
-    vd.bitmap = nullptr;
-    surface->ClearDirtyBounds();
+    views.erase(it);
 }
 
-extern "C" ULBAPI void ulbridge_view_load_html(const char* name, const char* html)
+static void doViewLoadHtml(const std::string& name, const std::string& html)
 {
+    std::lock_guard<std::mutex> lock(viewsLock);
     auto it = views.find(name);
     if (it == views.end()) {
-        ULERR("ulbridge_view_load_html: view not found");
+        ULERR("doViewLoadHtml: view not found");
         return;
     }
     it->second.domReady = false;
-    it->second.view->LoadHTML(html, "file:///asset/");
+    it->second.view->LoadHTML(html.c_str(), "file:///asset/");
 }
 
-extern "C" ULBAPI void ulbridge_view_load_url(const char* name, const char* url)
+static void doViewEvalScript(const std::string& name, const std::string& script)
 {
-    ULERR("load_url DISABLED for security. Use load_html instead.");
-}
-
-extern "C" ULBAPI void ulbridge_view_resize(const char* name, int w, int h)
-{
-    auto it = views.find(name);
-    if (it == views.end()) {
-        ULERR("ulbridge_view_resize: view not found");
-        return;
-    }
-    it->second.view->Resize(w, h);
-}
-
-extern "C" ULBAPI void ulbridge_view_mouse_event(const char* name, int x, int y,
-                                                  int type, int button)
-{
-    auto it = views.find(name);
-    if (it == views.end()) {
-        return;  // Silently ignore mouse events for non-existent views
-    }
-    MouseEvent evt{(MouseEvent::Type)type, x, y, (MouseEvent::Button)button};
-    it->second.view->FireMouseEvent(evt);
-}
-
-extern "C" ULBAPI void ulbridge_view_scroll_event(const char* name, int x, int y, int type)
-{
-    auto it = views.find(name);
-    if (it == views.end()) {
-        return;  // Silently ignore scroll events for non-existent views
-    }
-    ScrollEvent evt{(ScrollEvent::Type)type, x, y};
-    it->second.view->FireScrollEvent(evt);
-    renderer->RefreshDisplay(it->second.view->display_id());
-    renderer->Render();
-}
-
-extern "C" ULBAPI void ulbridge_view_eval_script(const char* name, const char* script)
-{
+    std::lock_guard<std::mutex> lock(viewsLock);
     auto it = views.find(name);
     if (it == views.end()) {
         ULERR("Dropping evalscript for " << name << ": view does not exist");
@@ -810,77 +770,47 @@ extern "C" ULBAPI void ulbridge_view_eval_script(const char* name, const char* s
     if (!v.domReady) {
         v.pendingJS.push_back(script);
     } else {
-        v.view->EvaluateScript(String(script));
+        v.view->EvaluateScript(String(script.c_str()));
     }
 }
 
-static thread_local std::string g_selectionBuffer;
-
-extern "C" ULBAPI const char* ulbridge_view_get_selection(const char* name)
+static void doViewResize(const std::string& name, int w, int h)
 {
+    std::lock_guard<std::mutex> lock(viewsLock);
     auto it = views.find(name);
     if (it == views.end()) {
-        g_selectionBuffer.clear();
-        return g_selectionBuffer.c_str();
-    }
-
-    auto& v = it->second;
-    if (!v.domReady) {
-        g_selectionBuffer.clear();
-        return g_selectionBuffer.c_str();
-    }
-
-    String result = v.view->EvaluateScript(
-        String("(function() { var s = window.getSelection(); return s ? s.toString() : ''; })()"));
-    
-    g_selectionBuffer = result.utf8().data();
-    return g_selectionBuffer.c_str();
-}
-
-extern "C" ULBAPI void ulbridge_view_focus(const char* name)
-{
-    auto it = views.find(name);
-    if (it == views.end()) {
+        ULERR("doViewResize: view not found");
         return;
     }
-    it->second.view->Focus();
+    it->second.view->Resize(w, h);
 }
 
-extern "C" ULBAPI void ulbridge_view_unfocus(const char* name)
+static void doViewMouseEvent(const std::string& name, int x, int y, int type, int button)
 {
+    std::lock_guard<std::mutex> lock(viewsLock);
     auto it = views.find(name);
     if (it == views.end()) {
-        return;
+        return;  // Silently ignore mouse events for non-existent views
     }
-    it->second.view->Unfocus();
+    MouseEvent evt{(MouseEvent::Type)type, x, y, (MouseEvent::Button)button};
+    it->second.view->FireMouseEvent(evt);
 }
 
-extern "C" ULBAPI bool ulbridge_view_has_focus(const char* name)
+static void doViewScrollEvent(const std::string& name, int x, int y, int type)
 {
+    std::lock_guard<std::mutex> lock(viewsLock);
     auto it = views.find(name);
     if (it == views.end()) {
-        return false;
+        return;  // Silently ignore scroll events for non-existent views
     }
-    return it->second.view->HasFocus();
+    ScrollEvent evt{(ScrollEvent::Type)type, x, y};
+    it->second.view->FireScrollEvent(evt);
+    renderer->RefreshDisplay(it->second.view->display_id());
 }
 
-extern "C" ULBAPI void ulbridge_view_delete(const char* name)
+static void doViewKeyEvent(const std::string& name, int type, int vcode, int mods)
 {
-    auto it = views.find(name);
-    if (it == views.end()) {
-        ULERR("ulbridge_view_delete: view not found: " << name);
-        return;
-    }
-    views.erase(it);
-}
-
-// =============================================================================
-// Keyboard Input
-// =============================================================================
-
-extern "C" ULBAPI void ulbridge_view_key_event(const char* name, int type,
-                                                int vcode, int mods)
-{
+    std::lock_guard<std::mutex> lock(viewsLock);
     auto it = views.find(name);
     if (it == views.end()) {
         return;
@@ -913,20 +843,418 @@ extern "C" ULBAPI void ulbridge_view_key_event(const char* name, int type,
     it->second.view->FireKeyEvent(ke);
 }
 
-// =============================================================================
-// Lifecycle & Callbacks
-// =============================================================================
-
-extern "C" ULBAPI void ulbridge_shutdown()
+static void doViewFocus(const std::string& name)
 {
-    ULDEBUG("ULBSHUTDOWN");
+    std::lock_guard<std::mutex> lock(viewsLock);
+    auto it = views.find(name);
+    if (it == views.end()) {
+        return;
+    }
+    it->second.view->Focus();
+}
+
+static void doViewUnfocus(const std::string& name)
+{
+    std::lock_guard<std::mutex> lock(viewsLock);
+    auto it = views.find(name);
+    if (it == views.end()) {
+        return;
+    }
+    it->second.view->Unfocus();
+}
+
+static void doShutdown()
+{
+    ULDEBUG("doShutdown");
     
     // ViewData destructors will clean up boundViewData entries
+    std::lock_guard<std::mutex> lock(viewsLock);
     views.clear();
-    
-    // Reset initialized flag to allow re-initialization
+    renderer = nullptr;
     initialized = false;
 }
+
+// =============================================================================
+// Command Processing (background thread)
+// =============================================================================
+
+static void processCommand(const BridgeCmd& cmd)
+{
+    std::visit([](auto&& arg) {
+        using T = std::decay_t<decltype(arg)>;
+        
+        if constexpr (std::is_same_v<T, CmdInit>) {
+            doInit(arg.gpu, arg.resourcePath);
+        }
+        else if constexpr (std::is_same_v<T, CmdShutdown>) {
+            doShutdown();
+        }
+        else if constexpr (std::is_same_v<T, CmdViewCreate>) {
+            doViewCreate(arg.name, arg.w, arg.h);
+        }
+        else if constexpr (std::is_same_v<T, CmdViewDelete>) {
+            doViewDelete(arg.name);
+        }
+        else if constexpr (std::is_same_v<T, CmdViewLoadHtml>) {
+            doViewLoadHtml(arg.name, arg.html);
+        }
+        else if constexpr (std::is_same_v<T, CmdViewEvalScript>) {
+            doViewEvalScript(arg.name, arg.script);
+        }
+        else if constexpr (std::is_same_v<T, CmdViewResize>) {
+            doViewResize(arg.name, arg.w, arg.h);
+        }
+        else if constexpr (std::is_same_v<T, CmdViewMouseEvent>) {
+            doViewMouseEvent(arg.name, arg.x, arg.y, arg.type, arg.button);
+        }
+        else if constexpr (std::is_same_v<T, CmdViewScrollEvent>) {
+            doViewScrollEvent(arg.name, arg.x, arg.y, arg.type);
+        }
+        else if constexpr (std::is_same_v<T, CmdViewKeyEvent>) {
+            doViewKeyEvent(arg.name, arg.type, arg.vcode, arg.mods);
+        }
+        else if constexpr (std::is_same_v<T, CmdViewFocus>) {
+            doViewFocus(arg.name);
+        }
+        else if constexpr (std::is_same_v<T, CmdViewUnfocus>) {
+            doViewUnfocus(arg.name);
+        }
+        else if constexpr (std::is_same_v<T, CmdRegisterImage>) {
+            doRegisterImage(arg.id, arg.pixels, arg.width, arg.height);
+        }
+    }, cmd);
+}
+
+// =============================================================================
+// Background Thread Loop
+// =============================================================================
+
+static bool drainCommandQueue()
+{
+    bool processed = false;
+    std::unique_lock<std::mutex> lock(queueMutex);
+    while (!commandQueue.empty()) {
+        BridgeCmd cmd = std::move(commandQueue.front());
+        commandQueue.pop();
+        lock.unlock();
+        
+        processCommand(cmd);
+        processed = true;
+        
+        lock.lock();
+    }
+    return processed;
+}
+
+static void backgroundLoop()
+{
+    ULLOG("Background thread started");
+
+    while (running && !initialized) {
+        drainCommandQueue();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    
+    ULLOG("Background thread initialized, entering render loop");
+
+    while (running) {
+        auto frameStart = std::chrono::steady_clock::now();
+        
+        drainCommandQueue();
+        
+        if (renderer) {
+            renderer->Update();
+            renderer->RefreshDisplay(0);
+            renderer->Render();
+        }
+        
+        // NOTE: Events are NOT drained here anymore.
+        // C# must call ulbridge_poll_events() on the main thread to fire events.
+        // This prevents cross-thread issues with Unity objects.
+        
+        // Sleep to maintain target frame rate
+        auto frameEnd = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(frameEnd - frameStart);
+        if (elapsed < FRAME_DURATION) {
+            std::this_thread::sleep_for(FRAME_DURATION - elapsed);
+        }
+    }
+    
+    // Final cleanup on thread exit
+    if (initialized) {
+        doShutdown();
+    }
+    
+    ULLOG("Background thread exited");
+}
+
+// =============================================================================
+// External C API (thread-safe, can be called from any thread)
+// =============================================================================
+
+extern "C" ULBAPI void ulbridge_start(bool gpu, const char* resourcePath)
+{
+    if (running) {
+        ULERR("ulbridge_start: already running");
+        return;
+    }
+    
+    running = true;
+    
+    // Start background thread
+    backgroundThread = std::thread(backgroundLoop);
+    
+    // Queue initialization command
+    std::string path = (resourcePath != nullptr) ? resourcePath : "";
+    enqueueCommand(CmdInit{gpu, path});
+    
+    ULLOG("Background thread launched");
+}
+
+extern "C" ULBAPI void ulbridge_stop()
+{
+    if (!running) {
+        return;
+    }
+    
+    ULLOG("Stopping background thread...");
+    
+    // Signal shutdown
+    running = false;
+    queueCV.notify_all();
+    
+    // Wait for thread to finish
+    if (backgroundThread.joinable()) {
+        backgroundThread.join();
+    }
+    
+    ULLOG("Background thread stopped");
+}
+
+extern "C" ULBAPI bool ulbridge_is_running()
+{
+    return running;
+}
+
+extern "C" ULBAPI bool ulbridge_is_initialized()
+{
+    return initialized;
+}
+
+// Poll and fire all queued events. MUST be called from the main thread (Unity's Update)
+// to ensure C# callbacks execute on the correct thread for Unity object access.
+extern "C" ULBAPI void ulbridge_poll_events()
+{
+    drainEventQueue();
+}
+
+// Register an image (copies data and queues for background thread)
+extern "C" ULBAPI bool ulbridge_register_image(const char* id, const unsigned char* pixels, int width, int height)
+{
+    if (!id || !pixels || width <= 0 || height <= 0) {
+        ULERR("Invalid parameters for register_image");
+        return false;
+    }
+    
+    // Copy pixel data since it may be freed after this call returns
+    size_t size = width * height * 4;
+    std::vector<unsigned char> pixelsCopy(pixels, pixels + size);
+    
+    enqueueCommand(CmdRegisterImage{std::string(id), std::move(pixelsCopy), width, height});
+    return true;
+}
+
+extern "C" ULBAPI void ulbridge_view_create(const char* name, int w, int h)
+{
+    enqueueCommand(CmdViewCreate{std::string(name), w, h});
+}
+
+extern "C" ULBAPI void ulbridge_view_delete(const char* name)
+{
+    enqueueCommand(CmdViewDelete{std::string(name)});
+}
+
+extern "C" ULBAPI void ulbridge_view_load_html(const char* name, const char* html)
+{
+    enqueueCommand(CmdViewLoadHtml{std::string(name), std::string(html)});
+}
+
+extern "C" ULBAPI void ulbridge_view_load_url(const char* name, const char* url)
+{
+    ULERR("load_url DISABLED for security. Use load_html instead.");
+}
+
+extern "C" ULBAPI void ulbridge_view_resize(const char* name, int w, int h)
+{
+    enqueueCommand(CmdViewResize{std::string(name), w, h});
+}
+
+extern "C" ULBAPI void ulbridge_view_eval_script(const char* name, const char* script)
+{
+    enqueueCommand(CmdViewEvalScript{std::string(name), std::string(script)});
+}
+
+extern "C" ULBAPI void ulbridge_view_mouse_event(const char* name, int x, int y, int type, int button)
+{
+    enqueueCommand(CmdViewMouseEvent{std::string(name), x, y, type, button});
+}
+
+extern "C" ULBAPI void ulbridge_view_scroll_event(const char* name, int x, int y, int type)
+{
+    enqueueCommand(CmdViewScrollEvent{std::string(name), x, y, type});
+}
+
+extern "C" ULBAPI void ulbridge_view_key_event(const char* name, int type, int vcode, int mods)
+{
+    enqueueCommand(CmdViewKeyEvent{std::string(name), type, vcode, mods});
+}
+
+extern "C" ULBAPI void ulbridge_view_focus(const char* name)
+{
+    enqueueCommand(CmdViewFocus{std::string(name)});
+}
+
+extern "C" ULBAPI void ulbridge_view_unfocus(const char* name)
+{
+    enqueueCommand(CmdViewUnfocus{std::string(name)});
+}
+
+// =============================================================================
+// Synchronous Read Operations (require locking, called from main thread)
+// =============================================================================
+
+// Thread-local buffer for returning security token to C#
+static thread_local std::string tokenBuffer;
+
+extern "C" ULBAPI const char* ulbridge_view_get_token(const char* name)
+{
+    std::lock_guard<std::mutex> lock(viewsLock);
+    auto it = views.find(name);
+    if (it == views.end()) {
+        return "";
+    }
+    tokenBuffer = it->second.securityToken;
+    return tokenBuffer.c_str();
+}
+
+extern "C" ULBAPI bool ulbridge_view_is_dirty(const char* name)
+{
+    std::lock_guard<std::mutex> lock(viewsLock);
+    auto it = views.find(name);
+    if (it == views.end()) {
+        return false;
+    }
+
+    BitmapSurface* surface = (BitmapSurface*)(it->second.view->surface());
+    return !surface->dirty_bounds().IsEmpty();
+}
+
+extern "C" ULBAPI void* ulbridge_view_get_pixels(const char* name, int* w, int* h, int* stride)
+{
+    std::lock_guard<std::mutex> lock(viewsLock);
+    auto it = views.find(name);
+    if (it == views.end()) {
+        return nullptr;
+    }
+
+    auto& vd = it->second;
+    Surface* surface = vd.view->surface();
+    BitmapSurface* bitmap_surface = (BitmapSurface*)surface;
+    RefPtr<Bitmap> bitmap = bitmap_surface->bitmap();
+
+    vd.bitmap = bitmap;
+    *w = bitmap->width();
+    *h = bitmap->height();
+    *stride = bitmap->row_bytes();
+
+    void* pixels = vd.bitmap->LockPixels();
+    return pixels;
+}
+
+extern "C" ULBAPI int ulbridge_view_width(const char* name)
+{
+    std::lock_guard<std::mutex> lock(viewsLock);
+    auto it = views.find(name);
+    if (it == views.end() || !it->second.bitmap) {
+        return 0;
+    }
+    return it->second.bitmap->width();
+}
+
+extern "C" ULBAPI int ulbridge_view_height(const char* name)
+{
+    std::lock_guard<std::mutex> lock(viewsLock);
+    auto it = views.find(name);
+    if (it == views.end() || !it->second.bitmap) {
+        return 0;
+    }
+    return it->second.bitmap->height();
+}
+
+extern "C" ULBAPI int ulbridge_view_stride(const char* name)
+{
+    std::lock_guard<std::mutex> lock(viewsLock);
+    auto it = views.find(name);
+    if (it == views.end() || !it->second.bitmap) {
+        return 0;
+    }
+    return it->second.bitmap->row_bytes();
+}
+
+extern "C" ULBAPI void ulbridge_view_unlock_pixels(const char* name)
+{
+    std::lock_guard<std::mutex> lock(viewsLock);
+    auto it = views.find(name);
+    if (it == views.end()) {
+        return;
+    }
+    auto& vd = it->second;
+    if (!vd.bitmap) {
+        return;
+    }
+    BitmapSurface* surface = (BitmapSurface*)(vd.view->surface());
+    vd.bitmap->UnlockPixels();
+    vd.bitmap = nullptr;
+    surface->ClearDirtyBounds();
+}
+
+extern "C" ULBAPI bool ulbridge_view_has_focus(const char* name)
+{
+    std::lock_guard<std::mutex> lock(viewsLock);
+    auto it = views.find(name);
+    if (it == views.end()) {
+        return false;
+    }
+    return it->second.view->HasFocus();
+}
+
+static thread_local std::string g_selectionBuffer;
+
+extern "C" ULBAPI const char* ulbridge_view_get_selection(const char* name)
+{
+    std::lock_guard<std::mutex> lock(viewsLock);
+    auto it = views.find(name);
+    if (it == views.end()) {
+        g_selectionBuffer.clear();
+        return g_selectionBuffer.c_str();
+    }
+
+    auto& v = it->second;
+    if (!v.domReady) {
+        g_selectionBuffer.clear();
+        return g_selectionBuffer.c_str();
+    }
+
+    String result = v.view->EvaluateScript(
+        String("(function() { var s = window.getSelection(); return s ? s.toString() : ''; })()"));
+    
+    g_selectionBuffer = result.utf8().data();
+    return g_selectionBuffer.c_str();
+}
+
+// =============================================================================
+// Event Callback Registration
+// =============================================================================
 
 extern "C" ULBAPI void ulbridge_set_event_callback(UnifiedEventCallback cb)
 {

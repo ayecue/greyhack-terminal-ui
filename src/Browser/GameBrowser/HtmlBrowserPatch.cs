@@ -151,11 +151,6 @@ namespace GreyHackTerminalUI.Browser.GameBrowser
                 
                 bridge.LoadHtml(htmlContent, loadListener);
                 
-                if (!string.IsNullOrEmpty(htmlContent))
-                {
-                    bridge.InjectEventListeners();
-                }
-                
                 return false; // Skip original method
             }
             catch (Exception ex)
@@ -175,17 +170,7 @@ namespace GreyHackTerminalUI.Browser.GameBrowser
                 return true; // Run original method
             }
             
-            try
-            {
-                var bridge = GetBridge(__instance);
-                bridge.InjectEventListeners();
-                return false; // Skip original
-            }
-            catch (Exception ex)
-            {
-                Log.LogError($"Error in AddListeners patch: {ex}");
-                return true;
-            }
+            return false;
         }
 
         [HarmonyPatch(typeof(HtmlBrowser), "Update")]

@@ -10,7 +10,7 @@ namespace GreyHackTerminalUI.Browser.GameBrowser
     {
         private readonly HtmlBrowser _htmlBrowser;
         private readonly RawImage _rawImage;
-        private readonly string _securityToken;
+        private string _securityToken;  // Lazily retrieved when needed
         private bool _listenersActive;
         private string _lastHtml;
 
@@ -131,9 +131,14 @@ html, body { height: 100%; background: #0a0a0f; }
                 ULBridge.Initialize(enableGpu: false);
             }
 
-            // Create the view immediately
+            // Subscribe to view created event to get the security token
+            ULBridge.OnViewCreated += HandleViewCreated;
+
+            // Subscribe to load events to inject listeners on DOMReady
+            ULBridge.OnLoad += HandleLoad;
+
+            // Create the view (async - background thread will process and fire ViewCreated event)
             ULBridge.ulbridge_view_create(ViewName, ViewWidth, ViewHeight);
-            _securityToken = ULBridge.GetViewToken(ViewName);
             ViewTexture = new Texture2D(ViewWidth, ViewHeight, TextureFormat.BGRA32, false);
             State = ViewState.Active;
 
@@ -203,9 +208,32 @@ html, body { height: 100%; background: #0a0a0f; }
             return processedHtml;
         }
 
-        public void InjectEventListeners()
+        private void HandleViewCreated(string viewName, ViewCreatedEvent e)
+        {
+            if (viewName != ViewName) return;
+            Log.LogInfo($"[UltralightHtmlBridge] View {viewName} created with security token");
+            _securityToken = e.SecurityToken;
+        }
+
+        private void HandleLoad(string viewName, LoadEvent e)
+        {
+            if (viewName != ViewName) return;
+            if (e.LoadEventType == (int)ULLoadEventType.DOMReady)
+            {
+                InjectEventListeners();
+            }
+        }
+
+        private void InjectEventListeners()
         {
             if (State != ViewState.Active || !_listenersActive) return;
+
+            // Check if we have the security token yet
+            if (string.IsNullOrEmpty(_securityToken))
+            {
+                Log.LogWarning("InjectEventListeners: security token not yet available, will retry on next call");
+                return;
+            }
 
             // Inject JavaScript to intercept clicks on .btn.btn-primary elements
             // The security token is captured in the closure - user JS cannot access it
@@ -322,8 +350,18 @@ html, body { height: 100%; background: #0a0a0f; }
             }
         }
 
+        // Static frame tracking to ensure PollEvents is called once per frame
+        private static int _lastPolledFrame = -1;
+
         public void Update()
         {
+            int currentFrame = Time.frameCount;
+            if (_lastPolledFrame != currentFrame)
+            {
+                _lastPolledFrame = currentFrame;
+                ULBridge.PollEvents();
+            }
+
             if (State != ViewState.Active || _rawImage == null) return;
 
             // Check for resize (browser window is resizable)
@@ -361,11 +399,11 @@ html, body { height: 100%; background: #0a0a0f; }
             if (_resizeCooldownTimer > 0)
             {
                 _resizeCooldownTimer -= Time.deltaTime;
-                ULBridge.Update();
+                // Background thread handles rendering; just wait for cooldown
                 return;
             }
 
-            ULBridge.Update();
+            // Background thread handles Update/Render; we just read the pixels
             UpdateTextureFromView();
         }
 
@@ -515,6 +553,8 @@ html, body { height: 100%; background: #0a0a0f; }
         protected override void OnDisposing()
         {
             ULBridge.UnregisterJSCallback($"btn_{ViewName}");
+            ULBridge.OnViewCreated -= HandleViewCreated;
+            ULBridge.OnLoad -= HandleLoad;
             ULBridge.OnCursor -= HandleCursorChange;
             ULBridge.OnError -= HandleNativeError;
 
