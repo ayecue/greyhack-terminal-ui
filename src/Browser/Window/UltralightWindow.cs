@@ -68,12 +68,12 @@ namespace GreyHackTerminalUI.Browser.Window
             var window = new UltralightWindow();
             window._terminalPID = terminalPID;
 
+            // Subscribe to view created event to get the security token
+            ULBridge.OnViewCreated += window.HandleViewCreated;
+
             // Create browser instance
             window._browser = new UltralightBrowser(DEFAULT_WIDTH, DEFAULT_HEIGHT);
             window._browser.Create();
-            
-            // Get security token for JS callbacks
-            window._securityToken = ULBridge.GetViewToken(window._browser.ViewName);
 
             // Wire up events
             window._browser.OnTitleChanged += title => window.SetTitle(title);
@@ -217,15 +217,21 @@ namespace GreyHackTerminalUI.Browser.Window
         }
 
         // Public API
+        
+        // Static frame tracking to ensure PollEvents is called once per frame
+        private static int _lastPolledFrame = -1;
 
         public void Update()
         {
+            int currentFrame = Time.frameCount;
+            if (_lastPolledFrame != currentFrame)
+            {
+                _lastPolledFrame = currentFrame;
+                ULBridge.PollEvents();
+            }
+
             if (_browser != null)
             {
-                // Update Ultralight - process pending events
-                ULBridge.Update();
-
-                // Update texture if dirty
                 if (_browser.UpdateTexture() && _contentImage != null)
                 {
                     _contentImage.texture = _browser.Texture;
@@ -487,7 +493,8 @@ namespace GreyHackTerminalUI.Browser.Window
             // Unsubscribe from cursor changes
             UltralightManager.OnCursorChange -= HandleCursorChange;
             
-            // Unsubscribe from native errors
+            // Unsubscribe from events
+            ULBridge.OnViewCreated -= HandleViewCreated;
             ULBridge.OnError -= HandleNativeError;
 
             // Restore normal cursor
@@ -607,10 +614,23 @@ namespace GreyHackTerminalUI.Browser.Window
             
             _jsApiRegistered = false;
         }
+
+        private void HandleViewCreated(string viewName, ViewCreatedEvent e)
+        {
+            if (_browser == null || viewName != _browser.ViewName) return;
+            _securityToken = e.SecurityToken;
+        }
         
         public void InjectTerminalJSApi()
         {
-            if (_browser == null || string.IsNullOrEmpty(_securityToken)) return;
+            if (_browser == null) return;
+            
+            // Check if we have the security token yet
+            if (string.IsNullOrEmpty(_securityToken))
+            {
+                Debug.LogWarning("[UltralightWindow] InjectTerminalJSApi: security token not yet available");
+                return;
+            }
             
             string viewName = _browser.ViewName;
             

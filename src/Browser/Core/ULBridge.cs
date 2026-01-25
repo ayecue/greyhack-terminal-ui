@@ -44,6 +44,11 @@ namespace GreyHackTerminalUI.Browser.Core
         [JsonProperty("message")] public string Message { get; set; } = "";
     }
 
+    public class ViewCreatedEvent
+    {
+        [JsonProperty("securityToken")] public string SecurityToken { get; set; } = "";
+    }
+
     internal static class ULBridge
     {
         private static readonly ManualLogSource Log = BepInEx.Logging.Logger.CreateLogSource("ULBridge");
@@ -85,6 +90,7 @@ namespace GreyHackTerminalUI.Browser.Core
         public static event Action<string, LoadEvent> OnLoad;
         public static event Action<LogEvent> OnLog;
         public static event Action<LogEvent> OnError;
+        public static event Action<string, ViewCreatedEvent> OnViewCreated;
 
         // Base names without prefix/suffix
         private static readonly string[] UltralightDependencies =
@@ -112,6 +118,7 @@ namespace GreyHackTerminalUI.Browser.Core
         }
 
         public static bool IsInitialized => _initialized;
+        public static bool IsRunning => ulbridge_is_running();
 
         public static void Initialize(bool enableGpu = false)
         {
@@ -121,8 +128,8 @@ namespace GreyHackTerminalUI.Browser.Core
             // Get the path where native resources are located
             var resourcePath = NativeLibraryLoader.GetNativeResourcePath();
 
-            // Initialize the native library with the resource path
-            ulbridge_init(enableGpu, resourcePath);
+            // Start the background thread and initialize the native library
+            ulbridge_start(enableGpu, resourcePath);
 
             // Subscribe to internal command handling
             OnCommand += HandleCommand;
@@ -147,18 +154,9 @@ namespace GreyHackTerminalUI.Browser.Core
             _shuttingDown = true;
 
             OnCommand -= HandleCommand;
-            ulbridge_shutdown();
+            ulbridge_stop();
             _jsCallbacks.Clear();
             _initialized = false;
-        }
-
-        public static void Update()
-        {
-            if (!_initialized || _shuttingDown) return;
-
-            ulbridge_update();
-            ulbridge_refresh_display(0);
-            ulbridge_render();
         }
 
         public static void RegisterJSCallback(string name, Action<string> callback)
@@ -286,7 +284,8 @@ namespace GreyHackTerminalUI.Browser.Core
             Cursor = 2,
             Load = 3,
             Log = 4,
-            Error = 5
+            Error = 5,
+            ViewCreated = 6
         }
 
         public static void RegisterEventCallback()
@@ -322,16 +321,35 @@ namespace GreyHackTerminalUI.Browser.Core
                 case ULEventType.Error:
                     OnError?.Invoke(ParseEvent<LogEvent>(jsonData));
                     break;
+                case ULEventType.ViewCreated:
+                    OnViewCreated?.Invoke(viewName, ParseEvent<ViewCreatedEvent>(jsonData));
+                    break;
             }
         }
 
-        // Initialization
+        // Background thread control
         [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void ulbridge_init(bool gpu, 
+        public static extern void ulbridge_start(bool gpu,
             [MarshalAs(UnmanagedType.LPStr)] string resourcePath);
 
         [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void ulbridge_shutdown();
+        public static extern void ulbridge_stop();
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern bool ulbridge_is_running();
+
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern bool ulbridge_is_initialized();
+
+        // Poll events - must be called from main thread (Unity Update)
+        [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
+        private static extern void ulbridge_poll_events();
+
+        public static void PollEvents()
+        {
+            if (_initialized && !_shuttingDown)
+                ulbridge_poll_events();
+        }
 
         [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
         private static extern void ulbridge_set_event_callback(UnifiedEventCallback cb);
@@ -347,7 +365,7 @@ namespace GreyHackTerminalUI.Browser.Core
         [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
         public static extern void ulbridge_refresh_display(uint displayId);
 
-        // View management (synchronous)
+        // View management
         [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
         public static extern void ulbridge_view_create(
             [MarshalAs(UnmanagedType.LPStr)] string name, int w, int h);
