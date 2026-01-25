@@ -18,6 +18,14 @@ namespace GreyHackTerminalUI.Settings
         public static ConfigEntry<bool> SoundEnabled { get; private set; }
         public static ConfigEntry<float> SoundVolume { get; private set; }
         
+        // Browser settings
+        public static ConfigEntry<bool> BrowserEnabled { get; private set; }
+        public static ConfigEntry<bool> BrowserUIEnabled { get; private set; }
+        public static ConfigEntry<bool> BrowserPowerUIReplacementEnabled { get; private set; }
+        
+        private static bool _browserNativeLibrariesAvailable = false;
+        public static bool BrowserNativeLibrariesAvailable => _browserNativeLibrariesAvailable;
+        
         // General settings
         public static ConfigEntry<bool> ShowSettingsHotkey { get; private set; }
         public static ConfigEntry<KeyCode> SettingsHotkey { get; private set; }
@@ -26,6 +34,9 @@ namespace GreyHackTerminalUI.Settings
         public static event Action<bool> OnCanvasEnabledChanged;
         public static event Action<bool> OnSoundEnabledChanged;
         public static event Action<float> OnSoundVolumeChanged;
+        public static event Action<bool> OnBrowserEnabledChanged;
+        public static event Action<bool> OnBrowserUIEnabledChanged;
+        public static event Action<bool> OnBrowserPowerUIReplacementEnabledChanged;
         
         public static void Initialize(ConfigFile configFile, ManualLogSource logger)
         {
@@ -65,6 +76,28 @@ namespace GreyHackTerminalUI.Settings
                 )
             );
             
+            // Browser settings
+            BrowserEnabled = _configFile.Bind(
+                "Browser",
+                "Enabled",
+                true,
+                "Enable or disable all Browser features (master toggle)"
+            );
+            
+            BrowserUIEnabled = _configFile.Bind(
+                "Browser",
+                "UIEnabled",
+                true,
+                "Enable or disable browsers created via UI blocks (Browser object in scripts)"
+            );
+            
+            BrowserPowerUIReplacementEnabled = _configFile.Bind(
+                "Browser",
+                "PowerUIReplacementEnabled",
+                true,
+                "Enable or disable the Ultralight replacement for the game's PowerUI browser implementation"
+            );
+            
             // General settings
             ShowSettingsHotkey = _configFile.Bind(
                 "General",
@@ -84,8 +117,11 @@ namespace GreyHackTerminalUI.Settings
             CanvasEnabled.SettingChanged += (s, e) => OnCanvasEnabledChanged?.Invoke(CanvasEnabled.Value);
             SoundEnabled.SettingChanged += (s, e) => OnSoundEnabledChanged?.Invoke(SoundEnabled.Value);
             SoundVolume.SettingChanged += (s, e) => OnSoundVolumeChanged?.Invoke(SoundVolume.Value);
+            BrowserEnabled.SettingChanged += (s, e) => OnBrowserEnabledChanged?.Invoke(BrowserEnabled.Value);
+            BrowserUIEnabled.SettingChanged += (s, e) => OnBrowserUIEnabledChanged?.Invoke(BrowserUIEnabled.Value);
+            BrowserPowerUIReplacementEnabled.SettingChanged += (s, e) => OnBrowserPowerUIReplacementEnabledChanged?.Invoke(BrowserPowerUIReplacementEnabled.Value);
             
-            _logger?.LogInfo($"[PluginSettings] Initialized - Canvas: {CanvasEnabled.Value}, Sound: {SoundEnabled.Value}");
+            _logger?.LogInfo($"[PluginSettings] Initialized - Canvas: {CanvasEnabled.Value}, Sound: {SoundEnabled.Value}, Browser: {BrowserEnabled.Value}");
         }
 
         public static void ToggleCanvas()
@@ -111,5 +147,31 @@ namespace GreyHackTerminalUI.Settings
             _configFile?.Save();
             _logger?.LogDebug("[PluginSettings] Settings saved");
         }
+        
+        public static void SetBrowserNativeLibrariesAvailable(bool available)
+        {
+            _browserNativeLibrariesAvailable = available;
+            _logger?.LogInfo($"[PluginSettings] Browser native libraries available: {available}");
+            
+            if (!available)
+            {
+                // Disable browser features if native libraries are not available
+                if (BrowserEnabled.Value)
+                {
+                    _logger?.LogWarning("[PluginSettings] Disabling browser features - native libraries not available");
+                    BrowserEnabled.Value = false;
+                }
+                if (BrowserUIEnabled.Value)
+                {
+                    BrowserUIEnabled.Value = false;
+                }
+                if (BrowserPowerUIReplacementEnabled.Value)
+                {
+                    BrowserPowerUIReplacementEnabled.Value = false;
+                }
+            }
+        }
+        
+        public static bool CanEnableBrowserFeatures => _browserNativeLibrariesAvailable;
     }
 }

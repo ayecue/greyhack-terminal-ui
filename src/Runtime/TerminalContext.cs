@@ -1,11 +1,14 @@
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using UnityEngine;
 using BepInEx.Logging;
 using GreyHackTerminalUI.VM;
+using GreyHackTerminalUI.Canvas;
+using GreyHackTerminalUI.Browser.Window;
 
-namespace GreyHackTerminalUI.Canvas
+namespace GreyHackTerminalUI.Runtime
 {
-    public class TerminalContext
+    internal class TerminalContext
     {
         private readonly int _terminalPID;
         private readonly ManualLogSource _logger;
@@ -13,6 +16,7 @@ namespace GreyHackTerminalUI.Canvas
         
         // Terminal-specific state
         private CanvasWindow _window;
+        private UltralightWindow _browserWindow;
         private VirtualMachine _vm;
         private VMContext _vmContext;
         private Queue<List<Token>> _pendingBlocks = new Queue<List<Token>>();
@@ -22,13 +26,16 @@ namespace GreyHackTerminalUI.Canvas
         private bool _isExecuting = false;
         private bool _hasVisibleWindow = false;
         private float _lastExecuteTime = 0f;
+        private bool _browserInitializing = false;
         
         // Batching configuration - increased to 60 FPS for smoother response
         private const float BATCH_INTERVAL = 0.016f; // ~60 FPS
         
         public int TerminalPID => _terminalPID;
         public CanvasWindow Window => _window;
+        public UltralightWindow BrowserWindow => _browserWindow;
         public bool HasVisibleWindow => _hasVisibleWindow;
+        public bool IsBrowserInitializing => _browserInitializing;
         public bool HasPendingTokens 
         { 
             get 
@@ -51,6 +58,7 @@ namespace GreyHackTerminalUI.Canvas
             _vmContext = new VMContext();
             _vmContext.SetGlobal("Canvas", "Canvas");
             _vmContext.SetGlobal("Sound", "Sound");
+            _vmContext.SetGlobal("Browser", "Browser");
             // Store terminal PID internally (not accessible to user scripts)
             _vmContext.SetInternal("terminalPID", terminalPID);
         }
@@ -63,8 +71,73 @@ namespace GreyHackTerminalUI.Canvas
             _window = CanvasWindow.Create(parent, _terminalPID);
             _vmContext.SetGlobal("__canvasWindow", _window);
 
-            _logger?.LogDebug($"[TerminalContext] Created window for terminal {_terminalPID}");
+            _logger?.LogDebug($"[TerminalContext] Created canvas window for terminal {_terminalPID}");
             return _window;
+        }
+        
+        public async Task InitializeBrowserAsync()
+        {
+            _logger?.LogInfo($"[TerminalContext] InitializeBrowserAsync called for terminal {_terminalPID}");
+            
+            if (_browserWindow != null || _browserInitializing)
+            {
+                _logger?.LogInfo($"[TerminalContext] Skipping - already initialized or initializing (window={_browserWindow != null}, initializing={_browserInitializing})");
+                return;
+            }
+            
+            if (BrowserManager.Instance == null || !BrowserManager.Instance.HasBrowserEngine)
+            {
+                _logger?.LogInfo($"[TerminalContext] Browser engine not configured, browser not available for terminal {_terminalPID} (instance={BrowserManager.Instance != null}, hasEngine={BrowserManager.Instance?.HasBrowserEngine})");
+                return;
+            }
+            
+            _browserInitializing = true;
+            _logger?.LogInfo($"[TerminalContext] Starting browser creation for terminal {_terminalPID}");
+            
+            try
+            {
+                _browserWindow = BrowserManager.Instance.GetOrCreateBrowser(_terminalPID);
+                if (_browserWindow != null)
+                {
+                    _vmContext.SetGlobal("__browserWindow", _browserWindow);
+                    _logger?.LogInfo($"[TerminalContext] Created browser window for terminal {_terminalPID}");
+                }
+                else
+                {
+                    _logger?.LogWarning($"[TerminalContext] GetOrCreateBrowser returned null for terminal {_terminalPID}");
+                }
+            }
+            catch (System.Exception ex)
+            {
+                _logger?.LogError($"[TerminalContext] Browser creation failed for terminal {_terminalPID}: {ex.Message}");
+            }
+            finally
+            {
+                _browserInitializing = false;
+            }
+        }
+
+        public async Task WaitForBrowserReadyAsync(int timeoutMs = 15000)
+        {
+            if (_browserWindow != null || !_browserInitializing)
+                return;
+                
+            var startTime = System.DateTime.UtcNow;
+            while (_browserInitializing && _browserWindow == null)
+            {
+                if ((System.DateTime.UtcNow - startTime).TotalMilliseconds > timeoutMs)
+                {
+                    _logger?.LogWarning($"[TerminalContext] Timeout waiting for browser to initialize for terminal {_terminalPID}");
+                    return;
+                }
+                await Task.Delay(50);
+            }
+            
+            // Update the VM context with the browser window
+            if (_browserWindow != null)
+            {
+                _vmContext.SetGlobal("__browserWindow", _browserWindow);
+            }
         }
           
         public void AccumulateTokens(List<Token> tokens)
@@ -103,6 +176,12 @@ namespace GreyHackTerminalUI.Canvas
 
         public void Execute()
         {
+            // Kick off async execution
+            _ = ExecuteAsync();
+        }
+
+        private async Task ExecuteAsync()
+        {
             // Take all pending blocks atomically
             List<List<Token>> blocksToExecute;
             lock (_tokensLock)
@@ -127,6 +206,13 @@ namespace GreyHackTerminalUI.Canvas
                     return;
                 }
                 
+                // Wait for browser to be ready if it's initializing
+                if (_browserInitializing)
+                {
+                    _logger?.LogDebug($"[TerminalContext] Waiting for browser to initialize before executing for terminal {_terminalPID}");
+                    await WaitForBrowserReadyAsync();
+                }
+                
                 var parser = new Parser();
                 var compiler = new Compiler();
                 
@@ -146,11 +232,17 @@ namespace GreyHackTerminalUI.Canvas
                         if (result.Error != null)
                         {
                             _logger?.LogError($"[TerminalContext] VM error for terminal {_terminalPID}: {result.Error}");
+                            
+                            // Show error toast on the game terminal
+                            TerminalToast.Show(_terminalPID, $"Script error: {result.Error}", true);
                         }
                     }
                     catch (System.Exception ex)
                     {
                         _logger?.LogError($"[TerminalContext] Block execution error: {ex.Message}");
+                        
+                        // Show parse/compile errors as toast on the game terminal
+                        TerminalToast.Show(_terminalPID, $"Script error: {ex.Message}", true);
                     }
                 }
             }
@@ -175,6 +267,12 @@ namespace GreyHackTerminalUI.Canvas
             {
                 _window.Destroy();
                 _window = null;
+            }
+            
+            if (_browserWindow != null)
+            {
+                _browserWindow.Destroy();
+                _browserWindow = null;
             }
             
             _vmContext = null;

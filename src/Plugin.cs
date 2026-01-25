@@ -3,7 +3,9 @@ using BepInEx;
 using BepInEx.Logging;
 using HarmonyLib;
 using GreyHackTerminalUI.Canvas;
+using GreyHackTerminalUI.Runtime;
 using GreyHackTerminalUI.Sound;
+using GreyHackTerminalUI.Browser.Window;
 using GreyHackTerminalUI.Patches;
 using GreyHackTerminalUI.Settings;
 using GreyHackTerminalUI.Utils;
@@ -37,8 +39,9 @@ namespace GreyHackTerminalUI
             // Initialize components
             TerminalPatches.Initialize(Logger);
             MenuInicioPatch.Initialize(Logger);
-            CanvasManager.Initialize(Logger);
+            RuntimeManager.Initialize(Logger);
             SoundManager.Initialize(Logger);
+            BrowserManager.Initialize(Logger);
             GameThemeHelper.Initialize(Logger);
 
             // Apply all patches
@@ -70,13 +73,42 @@ namespace GreyHackTerminalUI
 
         void OnDestroy()
         {
-            // Cleanup
+            ShutdownPlugin();
+        }
+        
+        void OnApplicationQuit()
+        {
+            // Ensure cleanup happens before application exit to prevent crash
+            // during static object destruction (cxa_finalize)
+            ShutdownPlugin();
+        }
+        
+        private bool _isShutdown = false;
+        
+        private void ShutdownPlugin()
+        {
+            if (_isShutdown) return;
+            _isShutdown = true;
+            
+            Logger.LogDebug($"Plugin {PluginInfo.PLUGIN_GUID} shutting down...");
+            
+            // Cleanup Harmony patches
             Harmony?.UnpatchSelf();
             
-            if (CanvasManager.Instance != null)
+            if (RuntimeManager.Instance != null)
             {
-                CanvasManager.Instance.DestroyAllWindows();
+                RuntimeManager.Instance.DestroyAllWindows();
             }
+            
+            // Destroy all browser windows first
+            if (BrowserManager.Instance != null)
+            {
+                BrowserManager.Instance.DestroyAllBrowsers();
+            }
+            
+            // Then shut down the Ultralight engine to prevent crash on exit
+            // This must happen AFTER destroying browsers and BEFORE app exit
+            UltralightManager.Shutdown();
 
             Logger.LogDebug($"Plugin {PluginInfo.PLUGIN_GUID} unloaded");
         }

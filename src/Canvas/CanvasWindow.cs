@@ -100,6 +100,11 @@ namespace GreyHackTerminalUI.Canvas
         private void OnDialogClosed(uDialog dialog)
         {
             _isVisible = false;
+            // Ensure the dialog is properly hidden (deactivated) for re-show later
+            if (_dialog != null && _dialog.gameObject != null)
+            {
+                _dialog.gameObject.SetActive(false);
+            }
         }
 
         public void Update()

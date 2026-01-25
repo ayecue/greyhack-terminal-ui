@@ -3,14 +3,14 @@
   <PropertyGroup>
     <TargetFramework>netstandard2.1</TargetFramework>
     <Description>BepInEx plugin for Grey Hack. Adds Canvas for associated Terminal.</Description>
-    <Version>0.2.1</Version>
+    <Version>0.3.0</Version>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <LangVersion>latest</LangVersion>
     <Authors>ayecue</Authors>
     <Company>ayecue</Company>
-    <AssemblyVersion>0.2.1</AssemblyVersion>
-    <FileVersion>0.2.1</FileVersion>
-    <ReleaseVersion>0.2.1</ReleaseVersion>
+    <AssemblyVersion>0.3.0</AssemblyVersion>
+    <FileVersion>0.3.0</FileVersion>
+    <ReleaseVersion>0.3.0</ReleaseVersion>
     <Configurations>Release-BepInEx5;Debug-BepInEx5;Release-BepInEx6;Debug-BepInEx6</Configurations>
     <RestoreAdditionalProjectSources>
       https://api.nuget.org/v3/index.json;
@@ -18,9 +18,11 @@
     </RestoreAdditionalProjectSources>
     <RootNamespace>GreyHackTerminalUI</RootNamespace>
     <NoWarn>CS1998</NoWarn>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
 
-    <!-- Define Grey Hack path -->
-    <GreyHackPath Condition="'$(GREY_HACK_PATH)' != ''">$(GREY_HACK_PATH)</GreyHackPath>
+    <!-- Define paths - use environment variables -->
+    <GreyHackPath>$(GREY_HACK_PATH)</GreyHackPath>
+    <WorkspacePath>$(WORKSPACE_PATH)</WorkspacePath>
   </PropertyGroup>
 
   <!-- BepInEx 5 Configuration -->
@@ -46,16 +48,7 @@
     <PackageReference Include="BepInEx.Analyzers" Version="1.*" PrivateAssets="all" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="UnityEngine.Modules" Version="2022.3.55" IncludeAssets="compile" />
-  </ItemGroup>
-
-  <!-- Game assemblies -->
-  <ItemGroup>
-    <Reference Include="Assembly-CSharp">
-      <HintPath>$(GreyHackPath)/Grey Hack.app/Contents/Resources/Data/Managed/Assembly-CSharp.dll</HintPath>
-    </Reference>
-    <Reference Include="Unity.TextMeshPro">
-      <HintPath>$(GreyHackPath)/Grey Hack.app/Contents/Resources/Data/Managed/Unity.TextMeshPro.dll</HintPath>
-    </Reference>
+    <PackageReference Include="HtmlAgilityPack" Version="1.11.61" />
   </ItemGroup>
 
   <!-- BepInEx 5 specific packages -->

@@ -16,6 +16,9 @@ namespace GreyHackTerminalUI.Settings
         // UI References
         private static Toggle _canvasToggle;
         private static Toggle _soundToggle;
+        private static Toggle _browserToggle;
+        private static Toggle _browserUIToggle;
+        private static Toggle _browserPowerUIToggle;
         private static Slider _volumeSlider;
         private static TextMeshProUGUI _volumeLabel;
         
@@ -67,7 +70,7 @@ namespace GreyHackTerminalUI.Settings
             }
             
             // Create dialog from scratch
-            _dialog = DialogBuilder.Create(parent, "Terminal Canvas Settings", new Vector2(320, 220));
+            _dialog = DialogBuilder.Create(parent, "Terminal Canvas Settings", new Vector2(320, 360));
             
             if (_dialog == null)
             {
@@ -120,10 +123,46 @@ namespace GreyHackTerminalUI.Settings
                 UpdateVolumeSliderInteractable();
             });
             
+            // Browser toggle
+            _browserToggle = CreateToggle(containerGO.transform, "Browser (Master)", PluginSettings.BrowserEnabled.Value);
+            _browserToggle.onValueChanged.AddListener(value => {
+                // Only allow enabling if native libraries are available
+                if (value && !PluginSettings.CanEnableBrowserFeatures)
+                {
+                    _browserToggle.SetIsOnWithoutNotify(false);
+                    return;
+                }
+                PluginSettings.BrowserEnabled.Value = value;
+                UpdateBrowserTogglesInteractable();
+            });
+            
+            // Browser UI toggle (for UI block browsers)
+            _browserUIToggle = CreateToggle(containerGO.transform, "  UI Block Browsers", PluginSettings.BrowserUIEnabled.Value);
+            _browserUIToggle.onValueChanged.AddListener(value => {
+                if (value && !PluginSettings.CanEnableBrowserFeatures)
+                {
+                    _browserUIToggle.SetIsOnWithoutNotify(false);
+                    return;
+                }
+                PluginSettings.BrowserUIEnabled.Value = value;
+            });
+            
+            // Browser PowerUI replacement toggle
+            _browserPowerUIToggle = CreateToggle(containerGO.transform, "  PowerUI Replacement", PluginSettings.BrowserPowerUIReplacementEnabled.Value);
+            _browserPowerUIToggle.onValueChanged.AddListener(value => {
+                if (value && !PluginSettings.CanEnableBrowserFeatures)
+                {
+                    _browserPowerUIToggle.SetIsOnWithoutNotify(false);
+                    return;
+                }
+                PluginSettings.BrowserPowerUIReplacementEnabled.Value = value;
+            });
+            
             // Volume slider
             CreateVolumeControl(containerGO.transform);
             
             UpdateVolumeSliderInteractable();
+            UpdateBrowserTogglesInteractable();
         }
         
         private static Toggle CreateToggle(Transform parent, string labelText, bool defaultValue)
@@ -304,9 +343,53 @@ namespace GreyHackTerminalUI.Settings
             }
         }
         
+        private static void UpdateBrowserTogglesInteractable()
+        {
+            bool canEnable = PluginSettings.CanEnableBrowserFeatures;
+            bool masterEnabled = PluginSettings.BrowserEnabled.Value && canEnable;
+            
+            // Master toggle - only interactable if native libraries are available
+            if (_browserToggle != null)
+            {
+                _browserToggle.interactable = canEnable;
+                // Update the toggle visuals to show disabled state
+                var checkmark = _browserToggle.graphic;
+                if (checkmark != null)
+                {
+                    checkmark.color = canEnable ? new Color(0f, 0.86f, 0.78f, 1f) : Color.gray;
+                }
+            }
+            
+            // Sub-toggles - only interactable if master is enabled and native libraries available
+            if (_browserUIToggle != null)
+            {
+                _browserUIToggle.interactable = masterEnabled;
+                var checkmark = _browserUIToggle.graphic;
+                if (checkmark != null)
+                {
+                    checkmark.color = masterEnabled ? new Color(0f, 0.86f, 0.78f, 1f) : Color.gray;
+                }
+            }
+            
+            if (_browserPowerUIToggle != null)
+            {
+                _browserPowerUIToggle.interactable = masterEnabled;
+                var checkmark = _browserPowerUIToggle.graphic;
+                if (checkmark != null)
+                {
+                    checkmark.color = masterEnabled ? new Color(0f, 0.86f, 0.78f, 1f) : Color.gray;
+                }
+            }
+        }
+        
         private static void OnDialogClosed(uDialog dialog)
         {
             _isVisible = false;
+            // Ensure the dialog is properly hidden (deactivated) for re-show later
+            if (_dialog != null && _dialog.gameObject != null)
+            {
+                _dialog.gameObject.SetActive(false);
+            }
         }
         
         public static void Hide()

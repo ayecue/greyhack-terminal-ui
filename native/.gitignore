@@ -1,0 +1,30 @@
+# Build outputs
+build/
+dist/
+
+# Ultralight SDKs (large, download separately)
+sdk/
+ulsdk/
+ultralight-sdk/
+*.7z
+
+# Old build artifacts
+*.dylib
+*.so
+*.dll
+*.bundle
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# IDE
+.vscode/
+.idea/
+*.xcodeproj/
+*.xcworkspace/
+
+# Logs
+*.log
