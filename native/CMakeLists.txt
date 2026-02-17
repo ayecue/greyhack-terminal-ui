@@ -118,9 +118,12 @@ if(WIN32)
     )
 elseif(APPLE)
     # macOS-specific configuration
-    # Force x86_64 architecture for Grey Hack (runs under Rosetta on Apple Silicon)
     if(FORCE_X64 OR ARCH STREQUAL "x64")
+        # Force x86_64 architecture for Grey Hack (runs under Rosetta on Apple Silicon)
         set(CMAKE_OSX_ARCHITECTURES "x86_64" CACHE STRING "" FORCE)
+    elseif(ARCH STREQUAL "arm64")
+        # Native Apple Silicon build
+        set(CMAKE_OSX_ARCHITECTURES "arm64" CACHE STRING "" FORCE)
     endif()
     
     # Ensure we use the correct SDK and standard library

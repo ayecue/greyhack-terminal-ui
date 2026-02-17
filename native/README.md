@@ -46,12 +46,16 @@ native/sdk/
 ./build.sh
 
 # Build for specific platform
-./build.sh mac      # macOS x64
-./build.sh linux    # Linux x64
-./build.sh win      # Windows x64
+./build.sh mac          # macOS x64
+./build.sh mac-arm64    # macOS arm64 (Apple Silicon native)
+./build.sh linux        # Linux x64
+./build.sh win          # Windows x64
 
-# Build all platforms
+# Build all platforms (x64)
 ./build.sh all
+
+# Build all platforms including arm64
+./build.sh all-arch
 
 # Build and install to Grey Hack
 ./build.sh --install

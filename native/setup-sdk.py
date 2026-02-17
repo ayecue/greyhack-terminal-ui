@@ -3,7 +3,7 @@
 Ultralight SDK Setup Script
 
 Extracts and organizes Ultralight SDK archives for multiplatform builds.
-Supports Windows, Linux, and macOS (x64 only, since Grey Hack uses x64).
+Supports Windows, Linux, and macOS (x64 and arm64).
 
 Usage:
     python3 setup-sdk.py                    # Auto-detect archives in common locations
@@ -35,7 +35,12 @@ PLATFORMS = {
         "libs": ["bin/*.so*", "lib/*.so*"],
     },
     "mac-x64": {
-        "archive_patterns": ["*mac*x64*", "*macos*", "*osx*"],
+        "archive_patterns": ["*mac*x64*", "*macos*x64*", "*osx*x64*"],
+        "test_file": "include/Ultralight/Ultralight.h",
+        "libs": ["bin/*.dylib", "lib/*.dylib"],
+    },
+    "mac-arm64": {
+        "archive_patterns": ["*mac*arm64*", "*macos*arm64*", "*mac*aarch64*", "*osx*arm64*"],
         "test_file": "include/Ultralight/Ultralight.h",
         "libs": ["bin/*.dylib", "lib/*.dylib"],
     },
@@ -191,7 +196,8 @@ Examples:
     python3 setup-sdk.py \\
         --win ~/Downloads/ultralight-free-sdk-1.4.0-win-x64.7z \\
         --linux ~/Downloads/ultralight-free-sdk-1.4.0-linux-x64.7z \\
-        --mac ~/Downloads/ultralight-free-sdk-1.4.0-mac-x64.7z
+        --mac ~/Downloads/ultralight-free-sdk-1.4.0-mac-x64.7z \
+        --mac-arm64 ~/Downloads/ultralight-free-sdk-1.4.0-mac-arm64.7z
         """
     )
     
@@ -203,6 +209,8 @@ Examples:
         help="Path to Linux x64 SDK archive")
     parser.add_argument("--mac", type=Path,
         help="Path to macOS x64 SDK archive")
+    parser.add_argument("--mac-arm64", type=Path, dest="mac_arm64",
+        help="Path to macOS arm64 SDK archive")
     parser.add_argument("--list", action="store_true",
         help="List current SDK status and exit")
     
@@ -233,6 +241,8 @@ Examples:
         archives["linux-x64"] = args.linux
     if args.mac:
         archives["mac-x64"] = args.mac
+    if args.mac_arm64:
+        archives["mac-arm64"] = args.mac_arm64
     
     # Search directories for remaining platforms
     if len(archives) < len(PLATFORMS):

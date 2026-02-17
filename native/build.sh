@@ -5,9 +5,10 @@
 # Usage:
 #   ./build.sh              # Build for current platform
 #   ./build.sh mac          # Build for macOS x64
+#   ./build.sh mac-arm64    # Build for macOS arm64 (Apple Silicon native)
 #   ./build.sh linux        # Build for Linux x64
 #   ./build.sh win          # Build for Windows x64 (requires cross-compiler)
-#   ./build.sh all          # Build all platforms
+#   ./build.sh all          # Build all platforms (x64)
 #   ./build.sh --install    # Build and install to Grey Hack
 #   ./build.sh --clean      # Clean build directories
 #
@@ -55,6 +56,10 @@ while [[ $# -gt 0 ]]; do
             PLATFORMS="$PLATFORMS mac-x64"
             shift
             ;;
+        mac-arm64|macos-arm64)
+            PLATFORMS="$PLATFORMS mac-arm64"
+            shift
+            ;;
         linux)
             PLATFORMS="$PLATFORMS linux-x64"
             shift
@@ -65,6 +70,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         all)
             PLATFORMS="mac-x64 linux-x64 win-x64"
+            shift
+            ;;
+        all-arch)
+            PLATFORMS="mac-x64 mac-arm64 linux-x64 win-x64"
             shift
             ;;
         --install|-i)
@@ -83,10 +92,12 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: $0 [platform...] [options]"
             echo ""
             echo "Platforms:"
-            echo "  mac, macos    Build for macOS x64"
-            echo "  linux         Build for Linux x64"
-            echo "  win, windows  Build for Windows x64"
-            echo "  all           Build all platforms"
+            echo "  mac, macos        Build for macOS x64"
+            echo "  mac-arm64         Build for macOS arm64 (Apple Silicon native)"
+            echo "  linux             Build for Linux x64"
+            echo "  win, windows      Build for Windows x64"
+            echo "  all               Build all platforms (x64)"
+            echo "  all-arch          Build all platforms including arm64"
             echo ""
             echo "Options:"
             echo "  --install, -i   Install to Grey Hack after building"
@@ -118,8 +129,13 @@ fi
 if [ -z "$PLATFORMS" ]; then
     case "$(uname -s)" in
         Darwin*)
-            # Grey Hack on macOS always uses x64 (Rosetta on Apple Silicon)
-            PLATFORMS="mac-x64"
+            # Detect native architecture
+            if [[ "$(uname -m)" == "arm64" ]]; then
+                # Apple Silicon: default to arm64 native build
+                PLATFORMS="mac-arm64"
+            else
+                PLATFORMS="mac-x64"
+            fi
             ;;
         Linux*)
             PLATFORMS="linux-x64"
@@ -197,23 +213,28 @@ build_platform() {
     local cmake_opts="-DCMAKE_BUILD_TYPE=$BUILD_TYPE"
     cmake_opts="$cmake_opts -DULSDK_DIR=$sdk_dir"
     
-    case "$os" in
-        mac)
-            # Force x86_64 for Grey Hack compatibility
+    case "$os-$arch" in
+        mac-x64)
+            # Force x86_64 for Grey Hack compatibility (Rosetta on Apple Silicon)
             cmake_opts="$cmake_opts -DCMAKE_OSX_ARCHITECTURES=x86_64"
             cmake_opts="$cmake_opts -DFORCE_X64=ON"
             cmake_opts="$cmake_opts -DTARGET_ARCH=x64"
             ;;
-        linux)
-            cmake_opts="$cmake_opts -DTARGET_ARCH=x64"
+        mac-arm64)
+            # Native Apple Silicon build
+            cmake_opts="$cmake_opts -DCMAKE_OSX_ARCHITECTURES=arm64"
+            cmake_opts="$cmake_opts -DTARGET_ARCH=arm64"
             ;;
-        win)
+        linux-*)
+            cmake_opts="$cmake_opts -DTARGET_ARCH=$arch"
+            ;;
+        win-*)
             # Windows cross-compilation (if on non-Windows)
             if [[ "$(uname -s)" != MINGW* ]] && [[ "$(uname -s)" != MSYS* ]]; then
                 print_warning "Cross-compiling for Windows requires MinGW or native Windows build"
                 cmake_opts="$cmake_opts -DCMAKE_TOOLCHAIN_FILE=$SCRIPT_DIR/cmake/mingw-toolchain.cmake"
             fi
-            cmake_opts="$cmake_opts -DTARGET_ARCH=x64"
+            cmake_opts="$cmake_opts -DTARGET_ARCH=$arch"
             ;;
     esac
     
@@ -264,7 +285,11 @@ install_to_game() {
     local platform=""
     case "$(uname -s)" in
         Darwin*)
-            platform="mac-x64"
+            if [[ "$(uname -m)" == "arm64" ]]; then
+                platform="mac-arm64"
+            else
+                platform="mac-x64"
+            fi
             ;;
         Linux*)
             platform="linux-x64"
